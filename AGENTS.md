@@ -8,7 +8,7 @@ migration. Active VM and Dell releases use `/opt/heurism/native/current`,
 The hostnames are `heurism-vm` and `heurism-dell`; the active C services are
 `heurism-control` and `heurism-desktop`. The old desktop/control service files
 remain disabled for rollback. Dell fresh boot
-`0654ac09-1cb1-4014-ab7f-9a7766d387c9` passed release/UI health, C power,
+`d5e85973-2087-4fc9-ab40-d43251868a3a` passed release/UI health, C power,
 root SSH/watch/control, six protected hashes and default SSD boot state after
 the verified auto-created USB NIC entries were removed from BootOrder.
 BootCurrent is `0005`, BootOrder `0005,0000`, DriverOrder `0000,0001`, BootNext
@@ -23,6 +23,8 @@ recovery interfaces. Do not change these without a complete recovery gate.
 See `docs/heurism-migration.md`.
 The VM final release also passed a checked fresh boot
 `44ae8e38-07e5-4acc-bacd-4efa95d0a528` with the new services.
+The final Dell reboot confirmed the live Ethernet DHCP process advertises
+`heurism-dell` while the pinned SSH link remains healthy.
 The local Git repository has commits but no remote; the current branch is
 `task/heurism-rename`.
 

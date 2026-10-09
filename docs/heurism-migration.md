@@ -8,7 +8,7 @@ Xfce 4.20 is the default desktop. Heurism owned runtime programs are C.
 | Target | Sealed release | Fresh boot verified |
 | --- | --- | --- |
 | Hyper-V `CompanionDev` | `/opt/heurism/native/releases/heurism-os-20261009T015910Z-3115` | `44ae8e38-07e5-4acc-bacd-4efa95d0a528` |
-| Dell Inspiron 7506 2n1 | `/opt/heurism/native/releases/heurism-os-dell-20261009T020254Z-7718` | `0654ac09-1cb1-4014-ab7f-9a7766d387c9` |
+| Dell Inspiron 7506 2n1 | `/opt/heurism/native/releases/heurism-os-dell-20261009T020254Z-7718` | `d5e85973-2087-4fc9-ab40-d43251868a3a` |
 
 The active symlink is `/opt/heurism/native/current` on both targets. The C
 executables are `heurism-sh`, `heurism-terminal`, `heurism-control`,
@@ -45,7 +45,8 @@ mode `0750` root-owned directory, with `companion-ui` as the allowed group.
 ## Management identity and service migration, 2026-10-08
 
 The installed hostnames are `heurism-vm` and `heurism-dell`. The Dell now sends
-`heurism-dell` in its DHCP requests, while the pinned SSH host key and local
+`heurism-dell` in its DHCP requests; this was checked in the live Ethernet DHCP
+process after the final fresh boot. The pinned SSH host key and local
 discovery alias are unchanged. The root management status, local welcome screen,
 audit heading and next-boot usage show Heurism. `heurism-status`,
 `heurism-audit`, `heurism-wifi` and `heurism-next-boot` are installed command

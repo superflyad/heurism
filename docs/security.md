@@ -4,7 +4,7 @@
 
 The active C release is
 `/opt/heurism/native/releases/heurism-os-dell-20261009T020254Z-7718`.
-Its checked C reboot returned boot `0654ac09-1cb1-4014-ab7f-9a7766d387c9` with
+Its checked C reboot returned boot `d5e85973-2087-4fc9-ab40-d43251868a3a` with
 root SSH, watch, control and Xfce desktop healthy. The release manifest and six
 protected EFI/kernel hashes passed. `BootCurrent` is `0005`, `BootOrder` is
 `0005,0000`, `DriverOrder` is `0000,0001`, and `BootNext` is absent. These are

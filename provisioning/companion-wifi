@@ -26,6 +26,7 @@ sleep 3
 if [ -f "/run/companion/dhcp-$interface.pid" ]; then
     kill "$(cat "/run/companion/dhcp-$interface.pid")" 2>/dev/null || true
 fi
-udhcpc -i "$interface" -t 12 -T 2 -p "/run/companion/dhcp-$interface.pid"
+udhcpc -i "$interface" -t 12 -T 2 -x hostname:heurism-dell \
+    -p "/run/companion/dhcp-$interface.pid"
 echo 'Wi-Fi configuration is in RAM for this USB session; an installation preserves it.'
 companion-status

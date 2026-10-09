@@ -20,7 +20,8 @@ for interface in /sys/class/net/*; do
     [ "$interface" != lo ] || continue
     ip link set "$interface" up || true
     # DHCP waits in its own process so unplugged adapters cannot block boot.
-    (udhcpc -i "$interface" -b -t 5 -T 2 -p "/run/companion/dhcp-$interface.pid" >"/run/companion/dhcp-$interface.log" 2>&1) &
+    (udhcpc -i "$interface" -b -t 5 -T 2 -x hostname:heurism-dell \
+        -p "/run/companion/dhcp-$interface.pid" >"/run/companion/dhcp-$interface.log" 2>&1) &
 done
 rc-service networking start
 # Keep local offline packages usable now, and online repositories after install.
@@ -36,5 +37,5 @@ companion-status | tee /etc/motd
     cat /etc/motd
     echo 'Local login: root (no local password). SSH passwords are disabled.'
 } > /etc/issue
-echo 'COMPANION_READY' > /dev/console
+echo 'HEURISM_READY' > /dev/console
 cat /etc/motd > /dev/console
