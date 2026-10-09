@@ -79,6 +79,19 @@ explicitly specifies `rootfstype=ext4` so the initramfs loads the root driver.
 The guest has its own protected boot/management manifest. VM power requests
 verify it, management health, UEFI boot and absence of a pending BootNext.
 
+The current Heurism recipe selects packages from
+`platform/heurism/vm-packages.list`, compiles and seals the C runtime during
+image construction, and starts `heurism-control` and `heurism-desktop` on first
+boot. Xfce is the default user session; the C workspace is its startup
+fallback. The old Python/Tk desktop is absent. Onboard remains an upstream
+application with a Python 3 dependency. The isolated `HeurismCandidate` VM
+passed first-boot framebuffer, C fallback, checked reboot and host-observed
+poweroff gates on 2026-10-09. Its VHDX contains an SSH host private key and a
+root authorized key from the local build; keep it private. The existing
+`CompanionDev` VM and its separate pinned SSH identity are unchanged. See
+[system base](heurism-system-base.md) for the candidate hash and remaining
+distribution gates.
+
 `create` refuses an existing VM or directory. Secure Boot is disabled only on
 this development VM for Alpine's unsigned loader. Automatic start is enabled
 after a 20-second delay; standard checkpoints preserve guest disk and memory.

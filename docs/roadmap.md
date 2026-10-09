@@ -8,7 +8,7 @@ proving ground. See [architecture](architecture.md),
 
 | Area | Current state | Next useful acceptance |
 | --- | --- | --- |
-| System base | Heurism identity on VM and Dell; VM package selection in `platform/heurism/vm-packages.list`; Alpine 3.24.2 package source retained | Build a fresh candidate image from the profile, boot it in isolation, and prove its upgrade and rollback path without losing management |
+| System base | Heurism identity on VM and Dell; fresh C-first Hyper-V candidate booted and passed first paint, fallback, reboot and shutdown gates; Alpine 3.24.2 package source retained | Provision per-install SSH keys, pin a package source, and prove whole-system update and rollback without losing management |
 | Daily desktop | Xfce panel, workspace, Thunar, Mousepad, Firefox, Heurism Settings and Power | Complete ordinary file, browser and settings tasks from the Dell display with human input |
 | Shell | C command runner with editing, history, pipes, redirection and basic globbing | Add job control, completion and more POSIX shell behavior with real PTY checks |
 | Terminal | C X11/Xft/libvterm PTY with resize and Ctrl+C verified | Add scrollback, selection and clipboard before treating it as a primary terminal |

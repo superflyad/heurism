@@ -1,5 +1,27 @@
 # Current product direction
 
+On 2026-10-09 a fresh C-first Heurism VM image was built from the checked
+Alpine 3.24.2 base and 45 direct package selections. Its VHDX SHA256 is
+`5bce37d38af77435b65e99f999284a9560c70216fa08e38ebfd4bfc9882f9e8c`.
+An isolated `HeurismCandidate` Hyper-V VM booted sealed C release
+`/opt/heurism/native/releases/heurism-os-image-20261009T145632Z` on boot
+`6edd8116-4960-4bc0-9d64-392e6f304c19`. Actual first-boot framebuffer
+shows the Heurism wallpaper. SSH/watch/control, UID-1000 Xfce, C power,
+protected hashes and exact installed-package inventory passed. The C workspace
+fallback painted correctly with Heurism branding; the C shell and graphical
+terminal passed a real UID-1000 file/window test. Checked reboot returned
+healthy boot `9ba17212-8231-4d66-8863-1a5cfb3c4935` with that file intact.
+Checked shutdown reached host-observed Off. The original `CompanionDev` VM was
+restarted on healthy boot `9b727da7-1024-40dd-97b8-5fc3186c7a42` and the
+candidate left Off. Pretest checkpoint UUID is
+`a90e8c9e-73d7-4967-bb17-fb3eb5e66e1b`. This candidate has not been installed
+on the Dell. The old Python/Tk desktop is absent from the image; Onboard still
+pulls in upstream Python 3. The VHDX contains generated SSH host private and
+root authorized keys and must not be published as a public downloadable image.
+Package versions are recorded, not locked to a repository snapshot. Provide
+per-install key provisioning and a repeatable package source before public
+image distribution. See `docs/heurism-system-base.md`.
+
 On 2026-10-09 the owner clarified that Heurism is its own Linux distribution,
 built from upstream Linux and Alpine components, not merely an Alpine desktop
 theme. The live VM and Dell now report `ID=heurism`, `ID_LIKE=alpine` in
@@ -10,10 +32,8 @@ the VM/Dell manifests. The checked VM fresh boot is
 `4dc58594-e232-44f6-baa2-6998c17115cb`. Dell NVRAM path 3, C release,
 Xfce, SSH/watch/control, sound and protected checks remained healthy. Default
 BootOrder `0005,0000`, DriverOrder `0000,0001`, no BootNext. The VM image
-builder now consumes Heurism's checked direct-package profile, but no new image
-has been built or booted from this revision. It still starts from Alpine
-minirootfs and installs legacy Python/Tk before a later C release; close that
-build-time gap in the VM before promoting a system image to the Dell. See
+builder consumes Heurism's checked direct-package profile and now seals C
+before first boot in the isolated candidate. See
 `docs/heurism-system-base.md`.
 
 On 2026-10-09 the dual-name EFI bootstrap was activated on the physical Dell

@@ -9,6 +9,13 @@ retain their previous identifiers during migration. See the
 [system base record](docs/heurism-system-base.md) for what is owned today and
 what still comes from upstream.
 
+A fresh C-first Hyper-V image has passed an isolated first-boot, desktop,
+fallback, terminal, reboot and shutdown gate. It is a private test artifact:
+its SSH host and root authorization keys are baked into the disk. The source
+recipe is here, but no public installable image is released yet. See the
+[system base record](docs/heurism-system-base.md) for its exact hash and the
+remaining distribution gates.
+
 Development runs first in the [PrimeServer Hyper-V VM](docs/prime-vm.md),
 `CompanionDev`, with separate root SSH, versioned UI releases, host reset and
 checkpoints. Guarded releases also run on the physical Dell. Linux remains the

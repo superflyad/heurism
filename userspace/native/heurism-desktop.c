@@ -335,7 +335,7 @@ static void render_dock(struct desktop *d) {
 }
 
 static void render_workspace(struct desktop *d) {
-    label(d, d->background, 56, 88, d->font_body, "C O M P A N I O N", 80, 225, 190);
+    label(d, d->background, 56, 88, d->font_body, "H E U R I S M", 80, 225, 190);
     label(d, d->background, 56, 164, d->font_large, "Your workspace", 239, 245, 255);
     label(d, d->background, 58, 195, d->font_body,
           "Applications, files and system settings", 157, 176, 198);
@@ -389,7 +389,7 @@ static void render_page(struct desktop *d) {
              (unsigned)d->width, (unsigned)d->height, 0, 360 * 64);
     if (d->power_mode) {
         label(d, d->background, 48, 72, d->font_body,
-              "C O M P A N I O N", 80, 225, 190);
+              "H E U R I S M", 80, 225, 190);
         label(d, d->background, 48, 133, d->font_large,
               "Power", 239, 245, 255);
         label(d, d->background, 48, 187, d->font_small,
@@ -413,7 +413,7 @@ static void render_page(struct desktop *d) {
                         d->page == SETTINGS ? "Appearance and input" :
                         d->page == DEVICE ? "Device information" :
                         d->page == NETWORK ? "Network" : "Sound";
-    label(d, d->background, 56, 92, d->font_body, "C O M P A N I O N", 80, 225, 190);
+    label(d, d->background, 56, 92, d->font_body, "H E U R I S M", 80, 225, 190);
     label(d, d->background, 56, 164, d->font_large, title, 239, 245, 255);
     if (!d->settings_mode || d->page != MENU)
         button(d, d->background, 58, 195, 190, 44,

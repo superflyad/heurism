@@ -1,6 +1,6 @@
 # Direct package selection for the Heurism Hyper-V image.
 # One package name per line. linux-firmware-none is bootstrapped separately.
-# This profile describes the existing VM baseline.
+# This profile builds the C-first VM image; Xfce remains upstream.
 alpine-base
 linux-lts
 grub-efi
@@ -21,8 +21,6 @@ xvfb
 openbox
 xterm
 font-dejavu
-python3
-python3-tkinter
 dbus
 dbus-openrc
 pulseaudio
@@ -38,3 +36,13 @@ util-linux
 pciutils
 usbutils
 x11vnc
+xfce4
+mousepad
+gvfs
+xfce4-terminal
+xset
+libxft
+libvterm
+json-c
+libcrypto3
+libssl3
