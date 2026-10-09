@@ -2,9 +2,10 @@
 
 The C terminal owns its X11 window, clipboard selections and PTY. libvterm
 still parses display control sequences, and `heurism-sh` remains the command
-interpreter. These changes are active only in `CompanionDev`; the Dell's state
-after its earlier checked reboot is unverified. No Dell command was run for
-this work.
+interpreter. These changes are active only in `CompanionDev`. The Dell later
+returned on a healthy fresh boot with its preceding scrollback release; these
+clipboard changes have not been installed there. No Dell command was run for
+the VM clipboard work.
 
 ## Behavior
 

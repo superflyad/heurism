@@ -15,7 +15,7 @@ if not args.name.replace('-', '').isalnum():
     parser.error('Name must be alphanumeric with optional hyphens')
 remote = '/var/lib/companion/desktop-stage/evidence/' + args.name + '.xwd'
 subprocess.run([sys.executable, str(repo/'tools/dell.py'), '--command',
-               'DISPLAY=:0 XAUTHORITY=/run/companion-desktop/Xauthority xwd -root -silent -out '+remote], check=True)
+               'DISPLAY=:0 XAUTHORITY=/run/heurism-desktop/Xauthority xwd -root -silent -out '+remote], check=True)
 state = json.loads((repo/'artifacts/targets/dell.json').read_text())
 identity = repo/'artifacts/ssh'
 out = repo/'build/desktop'

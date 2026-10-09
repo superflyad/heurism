@@ -21,14 +21,15 @@ test result and rollback path. See the [architecture](architecture.md),
 - [x] Xfce provides a panel, workspace, file manager, editor and browser;
   Heurism C Settings and checked Restart/Shut down have live Dell evidence.
 - [x] The C shell, PTY terminal, control socket and sealed release verifier
-  exist. Bounded scrollback passed a live Dell session before a checked reboot,
-  but [post-reboot Dell health is unverified](dell-terminal-20261009.md).
+  exist. Bounded scrollback passed a live Dell session before a checked reboot;
+  [pinned SSH and desktop health later returned](dell-terminal-20261009.md).
   The later scrollback title cue is VM only.
   [Selection, clipboard, clean close and a CJK font fallback](terminal-clipboard.md)
   are also VM only.
 - [x] A fresh C-first VM image booted, painted the desktop, passed fallback and
-  checked power tests. The Dell's last known release used its guarded installer
-  and existing SSD boot path; its present boot state remains unverified.
+  checked power tests. The Dell's current release used its guarded installer
+  and existing SSD boot path; its fresh boot, services, release and protected
+  hashes verified after trusted access returned.
 - [x] The owner reports that Dell touch and speakers work. Detailed gestures,
   microphone behavior and audio quality have not been accepted by hand.
 
@@ -40,8 +41,9 @@ Use the [Dell daily-use pass](dell-daily-use-pass.md) to record physical results
   display and input to open Files, create/edit/save/reopen documents, move a
   file to Trash and restore it, browse and download, use Settings and Power,
   and work in the terminal. Record every confusing or failed step.
-- [ ] **Finish the C terminal.** Confirm the Dell returns healthy after the
-  [scrollback release reboot](dell-terminal-20261009.md). Promote the VM-tested
+- [ ] **Finish the C terminal.** The Dell returned healthy after its
+  [scrollback release reboot](dell-terminal-20261009.md), but the recovery path
+  from the unreachable interval is unknown. Promote the VM-tested
   selection and clipboard safely, then complete large-paste behavior, Unicode
   display and wide-character checks, alternate-screen behavior and a visible
   scrollback cue. Verify real

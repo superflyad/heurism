@@ -49,7 +49,8 @@ SSH and `companion-watch` run independently of the desktop. Do not deploy this
 VM installer on the Dell. The Dell has its own exact-DMI installer,
 `install-native-dell.sh`, and the active sealed release
 `/opt/heurism/native/releases/heurism-os-dell-20261009T155551Z-25889` before
-a checked reboot whose remote return remains unverified. See
+a checked reboot. Trusted SSH later returned on a fresh boot with that release
+and Xfce healthy; the cause of the unreachable interval remains unknown. See
 [the Dell terminal update record](../../docs/dell-terminal-20261009.md). The Dell
 installer's `assemble` action does not switch services. `activate` changes
 only the desktop/control OpenRC scripts and native release symlink, with a
@@ -79,7 +80,8 @@ for startup and recovery scripts. The local terminal candidate retains up to
 512 scrolled lines and supports Shift+PageUp/PageDown and mouse-wheel history
 navigation. The current VM release also shows the scrollback position in the
 window title and has [X11 text selection and clipboard](../../docs/terminal-clipboard.md).
-The Dell ran the preceding scrollback build before its unverified reboot.
+The Dell ran the preceding scrollback build before the reboot whose fresh boot
+was later verified.
 The VM includes a WenQuanYi fallback for tested CJK glyphs. Broader Unicode
 coverage, wide-character alignment, application mouse reporting and
 accessibility remain open.

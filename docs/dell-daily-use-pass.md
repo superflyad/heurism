@@ -30,7 +30,10 @@ acceptance criterion.
 
 **Update:** a [terminal release activation](dell-terminal-20261009.md) passed
 on this boot, but its checked reboot did not return to remote management.
-The baseline above is historical; the Dell's present state is unverified.
+The baseline above is historical. Pinned SSH later returned on fresh boot
+`30913da8-5441-41d6-967f-020680316816` with the sealed release, Xfce,
+management services and protected hashes healthy. A remote screen capture
+showed the painted desktop. Human input, touch and audio acceptance remain open.
 
 ## Hands-on pass
 

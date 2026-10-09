@@ -1,14 +1,19 @@
-# Heurism security status — 2026-10-08
+# Heurism security status — 2026-10-09
 
 ## What is verified on the Dell
 
-The last fully verified C release before the later
-[terminal update and unverified reboot](dell-terminal-20261009.md) was
+The current sealed Dell C release
+`/opt/heurism/native/releases/heurism-os-dell-20261009T155551Z-25889`
+[verified on a fresh boot](dell-terminal-20261009.md) after a period of lost
+remote access. The cause of that interval remains unknown. The preceding
+fully verified C release was
 `/opt/heurism/native/releases/heurism-os-dell-20261009T020254Z-7718`.
 Its checked C reboot returned boot `d5e85973-2087-4fc9-ab40-d43251868a3a` with
 root SSH, watch, control and Xfce desktop healthy. The release manifest and six
-protected EFI/kernel hashes passed. `BootCurrent` is `0005`, `BootOrder` is
-`0005,0000`, `DriverOrder` is `0000,0001`, and `BootNext` is absent. These are
+protected EFI/kernel hashes passed. On the current recovered boot, the same
+six hashes and two identity hashes match. `BootCurrent` is `0005`, `BootOrder`
+is `0005,0000,0001,0002` after firmware added known USB NIC entries,
+`DriverOrder` is `0000,0001`, and `BootNext` is absent. These are
 point-in-time checks, not continuous measured boot or whole-system integrity.
 
 Root SSH uses public-key authentication with password login disabled. The
@@ -54,7 +59,8 @@ The active desktop and control OpenRC services are `heurism-desktop` and
 - The C shell is a usable interactive command launcher with editing, session
   history and basic globbing. It is not a complete POSIX shell; BusyBox ash
   remains the script and recovery shell. Bounded graphical-terminal scrollback
-  passed a live Dell test before the unverified reboot; clipboard and
+  passed a live Dell test before the reboot later verified through pinned SSH;
+  clipboard and
   accessibility support remain incomplete.
 
 ## Next engineering gates

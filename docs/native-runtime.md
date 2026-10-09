@@ -6,8 +6,8 @@ see [heurism-migration.md](heurism-migration.md). The release IDs and command
 names below record earlier Companion milestones and remain historical evidence.
 The development VM currently runs
 `/opt/heurism/native/releases/heurism-os-20261009T175459Z-69087` with
-[interactive C shell job control](shell-job-control.md). The Dell's return after
-its later checked reboot remains unverified; see
+[interactive C shell job control](shell-job-control.md). The Dell later
+returned to pinned SSH on a healthy fresh boot after an unreachable interval; see
 [the incident record](dell-terminal-20261009.md).
 
 Heurism is a Linux OS experience built from small Unix programs. Alpine owns
@@ -195,8 +195,9 @@ is not a full POSIX script shell; BusyBox ash still runs startup scripts. A
 local C terminal candidate has bounded scrollback and passed real X11
 keyboard/wheel, long-output and resize checks in the isolated image VM. The
 current development VM also has [text selection and clipboard](terminal-clipboard.md)
-with live PTY evidence. The Dell ran the earlier scrollback release before an
-unverified reboot; accessibility remains open. Browser and Onboard are external
+with live PTY evidence. The Dell ran the earlier scrollback release before a
+reboot whose fresh boot was later verified; accessibility remains open. Browser
+and Onboard are external
 Unix applications. Companion remains a C userspace on Linux, with the Dell
 release active under the checks above. See [security.md](security.md) for the
 current threat model and remaining security work.
