@@ -1,0 +1,11 @@
+#!/sbin/openrc-run
+description="Companion provisioning and remote management"
+depend() {
+    need localmount
+    after bootmisc modloop
+}
+start() {
+    ebegin "Starting Companion management"
+    /etc/companion/bin/companion-start > /var/log/companion-start.log 2>&1
+    eend $?
+}

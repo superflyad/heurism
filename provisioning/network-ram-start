@@ -1,0 +1,15 @@
+#!/bin/sh
+set -eu
+mount -t proc proc /proc
+mount -t sysfs sysfs /sys
+mount -t devtmpfs devtmpfs /dev
+mkdir -p /dev/pts /run /tmp /var/empty /var/lib/companion
+mount -t devpts devpts /dev/pts
+mount -t tmpfs tmpfs /run
+hostname companion-dell
+echo 15 > /proc/sys/kernel/panic
+echo 'COMPANION NETWORK RAM ROOT: key-only SSH, no disk mounts' > /etc/motd
+modprobe -a xhci_pci r8152 e1000 e1000e ax88179_178a af_packet virtio_pci virtio_net || true
+(sleep 120; [ -f /run/companion/network-healthy ] || /bin/busybox reboot -f) &
+/usr/sbin/sshd -t
+echo COMPANION_NETWORK_RAM_START > /dev/console

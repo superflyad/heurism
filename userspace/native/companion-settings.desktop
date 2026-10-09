@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+Name=Companion Settings
+Comment=Hardware and system controls
+Exec=/opt/companion/native/current/companion-desktop --settings
+Icon=preferences-system
+Terminal=false
+Categories=Settings;

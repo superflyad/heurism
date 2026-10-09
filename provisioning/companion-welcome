@@ -1,0 +1,32 @@
+#!/bin/sh
+# Presentation only: no service restart, network setup or recovery journal writes.
+set -eu
+boot=$(cat /proc/sys/kernel/random/boot_id)
+healthy=$(cat /var/lib/companion/healthy-boot-id 2>/dev/null || true)
+state='Starting management'
+if [ "$boot" = "$healthy" ] && rc-service sshd status >/dev/null 2>&1 &&
+    rc-service companion-watch status >/dev/null 2>&1; then
+    state='Management ready'
+fi
+mkdir -p /run/companion
+plain=/run/companion/welcome.txt
+{
+    printf '\n\n    COMPANION\n'
+    printf '    ------------------------------------------------\n\n'
+    printf '    %s\n' "$state"
+    ip -4 -o addr show scope global | awk '{printf "    Network: %s  %s\n", $2, $4}'
+    printf '\n    Remote access uses your authorized SSH key.\n'
+    printf '    Local access: log in as root.\n\n'
+    printf '    Status: companion-status\n'
+    printf '    Recovery: companion-next-boot rescue --reboot\n\n'
+    printf '    Companion development environment\n'
+    printf '    Linux management base | native kernel in development\n\n'
+} > "$plain"
+# The local getty prints issue after OpenRC completes. Clear old boot output and
+# show this concise screen; the other virtual terminals remain available.
+{ printf '\033[0m\033[2J\033[H\033[36m'; cat "$plain"; printf '\033[0m'; } > /etc/issue
+cp "$plain" /etc/motd
+if [ "${1:-}" = --show ]; then
+    cat /etc/issue > /dev/tty1
+    printf 'companion-dell login: ' > /dev/tty1
+fi

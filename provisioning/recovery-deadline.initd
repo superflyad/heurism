@@ -1,0 +1,23 @@
+#!/sbin/openrc-run
+description="Reset an unconfirmed installed boot to internal rescue after 120 seconds"
+command="/etc/companion/bin/companion-recovery-deadline"
+command_background=true
+pidfile="/run/companion-recovery-deadline.pid"
+depend() {
+    need localmount
+    before companion sshd
+}
+start() {
+    if [ ! -f /boot/efi/companion/recovery/grubenv ] || [ -f /etc/companion/rescue ]; then
+        einfo "Internal recovery deadline is not applicable"
+        return 0
+    fi
+    default_start
+}
+status() {
+    if [ "$(cat /var/lib/companion/healthy-boot-id 2>/dev/null)" = "$(cat /proc/sys/kernel/random/boot_id)" ]; then
+        einfo "status: complete (current boot confirmed healthy)"
+        return 0
+    fi
+    default_status
+}

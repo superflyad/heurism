@@ -1,0 +1,13 @@
+#!/sbin/openrc-run
+description="Companion native local hardware control"
+supervisor=supervise-daemon
+command=/opt/companion/native/current/companion-control
+respawn_delay=3
+respawn_max=5
+respawn_period=60
+output_log=/var/log/companion-control.log
+error_log=/var/log/companion-control.log
+depend() {
+    need localmount
+    after companion companion-watch companion-boot-health
+}

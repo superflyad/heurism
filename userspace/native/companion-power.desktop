@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+Name=Companion Power
+Comment=Checked restart and shut down
+Exec=/opt/companion/native/current/companion-desktop --power
+Icon=xfsm-shutdown
+Terminal=false
+Categories=System;

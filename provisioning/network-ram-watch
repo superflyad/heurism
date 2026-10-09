@@ -1,0 +1,24 @@
+#!/bin/sh
+mkdir -p /run/companion
+while :; do
+    for path in /sys/class/net/*; do
+        interface=${path##*/}
+        [ "$interface" != lo ] || continue
+        [ ! -d "$path/wireless" ] || continue
+        ip link set "$interface" up || continue
+        pidfile="/run/companion/dhcp-$interface.pid"
+        if ! { [ -r "$pidfile" ] && kill -0 "$(cat "$pidfile")" 2>/dev/null; }; then
+            udhcpc -i "$interface" -b -t 5 -T 1 -s /etc/companion/dhcp-script \
+                -p "$pidfile" -x hostname:companion-dell > /dev/console 2>&1 &
+        fi
+    done
+    if ! { [ -r /run/sshd.pid ] && kill -0 "$(cat /run/sshd.pid)" 2>/dev/null; }; then
+        /usr/sbin/sshd -E /run/companion/sshd.log || cat /run/companion/sshd.log > /dev/console
+    fi
+    expected=$(awk '{print $1 " " $2}' /etc/companion/host-identity.pub)
+    observed=$(timeout 4 ssh-keyscan -T 2 -t ed25519 127.0.0.1 2>/dev/null | awk '$2 == "ssh-ed25519" {print $2 " " $3; exit}')
+    if [ "$observed" = "$expected" ] && ip -4 -o addr show scope global | grep -q inet; then
+        touch /run/companion/network-healthy
+    fi
+    sleep 5
+done

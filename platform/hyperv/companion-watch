@@ -1,0 +1,22 @@
+#!/bin/sh
+# Private static VM network is configured by OpenRC, independently of the GUI.
+# Verify the SSH handshake and identity; do not alter DHCP or firmware choices.
+mkdir -p /var/lib/companion
+expected=$(awk '{print $1 " " $2}' /etc/ssh/ssh_host_ed25519_key.pub)
+failures=0
+while :; do
+    observed=$(timeout 6 ssh-keyscan -T 2 -t ed25519 127.0.0.1 2>/dev/null |
+        awk '$2 == "ssh-ed25519" {print $2 " " $3; exit}')
+    if [ "$observed" = "$expected" ] && rc-service networking status >/dev/null 2>&1; then
+        cat /proc/sys/kernel/random/boot_id > /var/lib/companion/healthy-boot-id
+        failures=0
+    else
+        failures=$((failures + 1))
+        if [ "$failures" -ge 3 ]; then
+            rc-service networking start || true
+            rc-service sshd restart || true
+            failures=0
+        fi
+    fi
+    sleep 5
+done

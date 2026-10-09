@@ -1,0 +1,13 @@
+#!/sbin/openrc-run
+description="Recover Companion networking and root SSH access"
+supervisor="supervise-daemon"
+command="/etc/companion/bin/companion-watch"
+pidfile="/run/companion-watch.pid"
+respawn_delay=5
+respawn_max=0
+output_log="/var/log/companion-watch.log"
+error_log="/var/log/companion-watch.log"
+depend() {
+    need localmount
+    after companion
+}

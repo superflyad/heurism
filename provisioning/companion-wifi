@@ -1,0 +1,31 @@
+#!/bin/sh
+set -eu
+interface=$(iw dev 2>/dev/null | awk '$1 == "Interface" {print $2; exit}')
+if [ -z "$interface" ]; then
+    echo 'No wireless interface found. Use Ethernet; see dmesg for firmware/driver errors.' >&2
+    exit 1
+fi
+rfkill unblock wifi 2>/dev/null || true
+ip link set "$interface" up
+echo "Wireless interface: $interface"
+iw dev "$interface" scan 2>/dev/null | awk '/SSID:/ {sub(/^[[:space:]]*/, ""); print}' || true
+printf 'Wi-Fi name (SSID): '; IFS= read -r ssid
+printf 'Wi-Fi password (hidden): '
+stty -echo
+trap 'stty echo' EXIT INT TERM
+IFS= read -r password
+stty echo; trap - EXIT INT TERM
+echo
+umask 077
+mkdir -p /etc/companion
+printf '%s\n' "$password" | wpa_passphrase "$ssid" | sed '/^[[:space:]]*#psk=/d' > /etc/companion/wifi.conf
+unset password
+wpa_cli -i "$interface" terminate >/dev/null 2>&1 || true
+wpa_supplicant -B -i "$interface" -c /etc/companion/wifi.conf
+sleep 3
+if [ -f "/run/companion/dhcp-$interface.pid" ]; then
+    kill "$(cat "/run/companion/dhcp-$interface.pid")" 2>/dev/null || true
+fi
+udhcpc -i "$interface" -t 12 -T 2 -p "/run/companion/dhcp-$interface.pid"
+echo 'Wi-Fi configuration is in RAM for this USB session; an installation preserves it.'
+companion-status

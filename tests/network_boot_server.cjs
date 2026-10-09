@@ -1,0 +1,16 @@
+const assert=require('assert');const {dhcpReply,options}=require('../tools/network-boot-server.cjs');
+const request=Buffer.alloc(240);request[0]=1;request[1]=1;request[2]=6;
+Buffer.from('7cc2c61db2f5','hex').copy(request,28);request.writeUInt32BE(0x63825363,236);
+const opt=(n,data)=>Buffer.concat([Buffer.from([n,data.length]),data]);
+const frame=(type,extra=Buffer.alloc(0))=>Buffer.concat([request,opt(53,Buffer.from([type])),opt(60,Buffer.from('PXEClient:Arch:00007')),extra,Buffer.from([255])]);
+assert.equal(dhcpReply(frame(1),'companion-probe.efi')[242],2);
+assert.equal(dhcpReply(frame(3),'companion-probe.efi')[242],5);
+const client=Buffer.from([1,0x7c,0xc2,0xc6,0x1d,0xb2,0xf5]);
+assert(options(dhcpReply(frame(1,opt(61,client)),'x')).get(61).equals(client));
+assert.equal(dhcpReply(frame(3,opt(54,Buffer.from([10,8,22,1]))),'x'),null);
+assert.equal(dhcpReply(frame(3,opt(50,Buffer.from([10,8,22,200]))),'x'),null);
+assert.equal(dhcpReply(Buffer.concat([request,opt(53,Buffer.from([1])),Buffer.from([255])]),'x'),null);
+const stranger=frame(1);stranger[28]^=1;assert.equal(dhcpReply(stranger,'x'),null);
+const relay=frame(1);relay[24]=1;assert.equal(dhcpReply(relay,'x'),null);
+const malformed=frame(1);malformed[241]=255;assert.equal(dhcpReply(malformed,'x'),null);
+console.log('PASS: target-only PXE DHCP; ordinary clients, other servers/addresses, relays and malformed packets ignored');

@@ -1,0 +1,24 @@
+#!/bin/sh
+# Select the stable installation or internal RAM rescue on the next reboot.
+set -eu
+case "${1:-}" in
+    stable) pending=0;;
+    rescue) pending=1;;
+    *) echo 'Usage: companion-next-boot stable|rescue [--reboot]' >&2; exit 1;;
+esac
+[ "$#" -le 2 ] || exit 1
+[ "$#" -eq 1 ] || [ "$2" = --reboot ] || exit 1
+if [ -f /etc/companion/rescue ]; then
+    mountpoint=/media/nvme0n1p1
+    mount -o remount,rw "$mountpoint"
+else
+    mountpoint=/boot/efi
+fi
+envfile=$mountpoint/companion/recovery/grubenv
+[ -f "$envfile" ] || { echo 'Internal recovery journal is not installed.' >&2; exit 1; }
+grub-editenv "$envfile" set "companion_pending=$pending"
+sync
+echo "Next boot: $1"
+if [ "$#" -eq 2 ]; then
+    nohup sh -c 'sleep 3; reboot' >/tmp/companion-reboot.log 2>&1 </dev/null &
+fi

@@ -1,0 +1,40 @@
+#!/bin/sh
+set -eu
+mkdir -p /var/lib/companion /run/companion /usr/local/sbin
+for script in /etc/companion/bin/*; do
+    ln -sf "$script" "/usr/local/sbin/${script##*/}"
+done
+modprobe iwlwifi 2>/dev/null || true
+modprobe vmd 2>/dev/null || true
+modprobe r8152 2>/dev/null || true
+modprobe ax88179_178a 2>/dev/null || true
+rfkill unblock wifi 2>/dev/null || true
+if [ -f /etc/companion/wifi.conf ]; then
+    wifi=$(iw dev 2>/dev/null | awk '$1 == "Interface" {print $2; exit}')
+    if [ -n "$wifi" ]; then
+        wpa_supplicant -B -i "$wifi" -c /etc/companion/wifi.conf || true
+    fi
+fi
+for interface in /sys/class/net/*; do
+    interface=${interface##*/}
+    [ "$interface" != lo ] || continue
+    ip link set "$interface" up || true
+    # DHCP waits in its own process so unplugged adapters cannot block boot.
+    (udhcpc -i "$interface" -b -t 5 -T 2 -p "/run/companion/dhcp-$interface.pid" >"/run/companion/dhcp-$interface.log" 2>&1) &
+done
+rc-service networking start
+# Keep local offline packages usable now, and online repositories after install.
+if ! grep -q '^https://' /etc/apk/repositories; then
+    printf '%s\n' 'https://dl-cdn.alpinelinux.org/alpine/v3.24/main' \
+        'https://dl-cdn.alpinelinux.org/alpine/v3.24/community' >> /etc/apk/repositories
+fi
+rc-service sshd start
+companion-audit
+sleep 3
+companion-status | tee /etc/motd
+{
+    cat /etc/motd
+    echo 'Local login: root (no local password). SSH passwords are disabled.'
+} > /etc/issue
+echo 'COMPANION_READY' > /dev/console
+cat /etc/motd > /dev/console

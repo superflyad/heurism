@@ -1,0 +1,56 @@
+#!/bin/sh
+# Recover network clients and the SSH listener; never reboot or erase anything.
+mkdir -p /run/companion
+ssh_failures=0
+identity=/etc/companion/host-identity.pub
+[ -f "$identity" ] || identity=/etc/ssh/ssh_host_ed25519_key.pub
+expected_key=$(awk '{print $1 " " $2}' "$identity")
+while :; do
+    for path in /sys/class/net/*; do
+        interface=${path##*/}
+        [ "$interface" != lo ] || continue
+        ip link set "$interface" up 2>/dev/null || continue
+        if [ -d "$path/wireless" ]; then
+            [ -f /etc/companion/wifi.conf ] || continue
+            wpapid="/run/companion/wpa-$interface.pid"
+            if ! { [ -r "$wpapid" ] && kill -0 "$(cat "$wpapid")" 2>/dev/null; }; then
+                wpa_supplicant -B -i "$interface" -c /etc/companion/wifi.conf -P "$wpapid" || true
+            fi
+        fi
+        dhcppid="/run/companion/dhcp-$interface.pid"
+        if ! { [ -r "$dhcppid" ] && kill -0 "$(cat "$dhcppid")" 2>/dev/null; }; then
+            udhcpc -i "$interface" -b -t 5 -T 2 -x hostname:companion-dell \
+                -p "$dhcppid" >"/run/companion/dhcp-$interface.log" 2>&1 || true
+        fi
+    done
+    if ! rc-service sshd status >/dev/null 2>&1; then
+        rc-service sshd zap >/dev/null 2>&1 || true
+        rc-service sshd start || true
+        ssh_failures=0
+    else
+        # A frozen listener still has a PID and accepts TCP handshakes through
+        # the kernel. Require a completed SSH key exchange with our host key.
+        observed_key=$(timeout 8 ssh-keyscan -T 3 -t ed25519 127.0.0.1 2>/dev/null |
+            awk '$2 == "ssh-ed25519" {print $2 " " $3; exit}')
+        if [ -n "$expected_key" ] && [ "$observed_key" = "$expected_key" ]; then
+            ssh_failures=0
+        else
+            ssh_failures=$((ssh_failures + 1))
+            if [ "$ssh_failures" -ge 3 ]; then
+                echo "$(date -u): SSH key exchange failed three times; restarting listener"
+                pid=$(cat /run/sshd.pid 2>/dev/null || true)
+                case "$pid" in
+                    ''|*[!0-9]*) ;;
+                    *) if [ "$(cat /proc/$pid/comm 2>/dev/null)" = sshd ]; then
+                           kill -CONT "$pid" 2>/dev/null || true
+                       fi;;
+                esac
+                rc-service sshd stop || true
+                rc-service sshd zap >/dev/null 2>&1 || true
+                rc-service sshd start || true
+                ssh_failures=0
+            fi
+        fi
+    fi
+    sleep 10
+done

@@ -1,0 +1,38 @@
+#!/bin/sh
+set -eu
+envfile=/boot/efi/companion/recovery/grubenv
+[ -f "$envfile" ] || exit 0
+[ ! -f /etc/companion/rescue ] || exit 0
+# Do not clear the journal merely because userspace started: require the
+# actual installed root, valid key-only SSH configuration, and an IPv4 lease.
+case "$(findmnt -n -o SOURCE /)" in /dev/*) ;; *) exit 1;; esac
+sshd -t
+effective=$(sshd -T -C user=root,host=localhost,addr=127.0.0.1)
+printf '%s\n' "$effective" | grep -qx 'pubkeyauthentication yes'
+printf '%s\n' "$effective" | grep -Eq '^permitrootlogin (without-password|prohibit-password|yes)$'
+printf '%s\n' "$effective" | grep -qx 'authorizedkeysfile .ssh/authorized_keys'
+expected_host=$(awk '{print $1 " " $2}' /etc/companion/host-identity.pub)
+actual_host=$(ssh-keygen -y -f /etc/ssh/ssh_host_ed25519_key | awk '{print $1 " " $2}')
+[ "$actual_host" = "$expected_host" ]
+expected_client=$(awk '{print $1 " " $2}' /etc/companion/client-access.pub)
+awk '{print $1 " " $2}' /root/.ssh/authorized_keys | grep -Fqx "$expected_client"
+rc-service sshd status >/dev/null
+rc-service companion-watch status >/dev/null
+tries=0
+until timeout 8 ssh-keyscan -T 3 -t ed25519 127.0.0.1 2>/dev/null |
+    awk '$2 == "ssh-ed25519" {print $2 " " $3}' | grep -Fqx "$expected_host"; do
+    tries=$((tries + 1))
+    [ "$tries" -lt 3 ] || exit 1
+    sleep 2
+done
+# DHCP may take longer than the startup service's initial three-second pause.
+tries=0
+until ip -4 -o addr show scope global | grep -q 'inet '; do
+    tries=$((tries + 1))
+    [ "$tries" -lt 45 ] || exit 1
+    sleep 2
+done
+grub-editenv "$envfile" set companion_pending=0
+mkdir -p /var/lib/companion
+cat /proc/sys/kernel/random/boot_id > /var/lib/companion/healthy-boot-id
+sync

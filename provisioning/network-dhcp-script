@@ -1,0 +1,12 @@
+#!/bin/sh
+case "$1" in
+bound|renew)
+    ip address replace "$ip/${mask:-24}" dev "$interface" || exit 1
+    for gateway in $router; do
+        ip route replace default via "$gateway" dev "$interface" || true
+        break
+    done
+    : > /etc/resolv.conf
+    for address in $dns; do echo "nameserver $address" >> /etc/resolv.conf; done
+    ;;
+esac

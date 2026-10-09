@@ -1,0 +1,1075 @@
+#define _GNU_SOURCE
+/* Companion workspace and dock: X11/Xft client of the local C control service. */
+#include <X11/Xatom.h>
+#include <X11/Xlib.h>
+#include <X11/Xutil.h>
+#include <X11/keysym.h>
+#include <X11/Xft/Xft.h>
+#include <errno.h>
+#include <fcntl.h>
+#include <json-c/json.h>
+#include <locale.h>
+#include <poll.h>
+#include <signal.h>
+#include <stdbool.h>
+#include <stdint.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <sys/socket.h>
+#include <sys/un.h>
+#include <sys/stat.h>
+#include <time.h>
+#include <unistd.h>
+
+#define DEFAULT_SOCKET "/run/companion-desktop/control.sock"
+#define MAX_HITS 64
+#define MAX_TASKS 16
+
+enum page { WORKSPACE, MENU, OVERVIEW, SETTINGS, DEVICE, NETWORK, SOUND };
+enum action { NONE, SHOW_WORKSPACE, SHOW_MENU, SHOW_OVERVIEW, SHOW_SETTINGS,
+              SHOW_DEVICE, SHOW_NETWORK, SHOW_SOUND, LAUNCH_FILES, LAUNCH_EDITOR,
+              LAUNCH_BROWSER, LAUNCH_TERMINAL, LAUNCH_KEYBOARD, TOGGLE_THEME,
+              SWITCH_TASK, MINIMIZE_TASKS, ADMIN_CONSOLE, RESTART_VM, SHUT_DOWN_VM,
+              BRIGHTER, DIMMER, TAP_TOGGLE, SCROLL_TOGGLE, SPEED_UP, SPEED_DOWN,
+              WIFI_SCAN, WIFI_SELECT, WIFI_CONNECT, WIFI_PASSWORD,
+              SOUND_LEFT_UP, SOUND_LEFT_DOWN, SOUND_RIGHT_UP, SOUND_RIGHT_DOWN,
+              SOUND_MUTE, BIOS_SELECT, BIOS_NEXT, BIOS_APPLY };
+struct hit { Window window; int x, y, width, height; enum action action; int index; };
+struct task { Window window; char title[64]; };
+struct desktop {
+    Display *display;
+    int screen, width, height, dock_x, dock_y, dock_width;
+    Window background, dock;
+    Visual *visual;
+    GC gc;
+    XftDraw *background_draw, *dock_draw;
+    XftFont *font_small, *font_body, *font_large;
+    Atom type_atom, desktop_atom, dock_atom, strut_atom, client_list_atom, active_atom;
+    struct hit hits[MAX_HITS];
+    int hit_count;
+    struct task tasks[MAX_TASKS];
+    int task_count;
+    enum page page;
+    bool light;
+    char address[64], hostname[128], kernel[128], notice[160];
+    long long total_memory, free_memory;
+    bool ssh, watch, boot_healthy;
+    bool status_ready;
+    bool dell, tap, natural_scroll, muted, password_focus;
+    int brightness, battery, sound_left, sound_right, network_count, bios_selected, bios_choice;
+    double pointer_speed;
+    char wifi_state[64], wifi_address[64], wifi_connected[64], wifi_ssid[64], wifi_password[64];
+    char networks[12][64];
+    struct json_object *bios_items;
+    char boot_id[64];
+    int published_page;
+    bool settings_mode;
+    bool power_mode;
+    enum action pending_power;
+    time_t power_deadline;
+    const char *control_socket;
+};
+
+static unsigned long rgb(struct desktop *d, unsigned red, unsigned green, unsigned blue) {
+    unsigned long parts[3] = {red, green, blue};
+    unsigned long masks[3] = {d->visual->red_mask, d->visual->green_mask, d->visual->blue_mask};
+    unsigned long pixel = 0;
+    for (int i = 0; i < 3; i++) {
+        unsigned shift = 0;
+        unsigned long mask = masks[i];
+        if (!mask) continue;
+        while (!(mask & 1)) { mask >>= 1; shift++; }
+        pixel |= ((parts[i] * mask + 127) / 255) << shift;
+    }
+    return pixel;
+}
+
+static void fill(struct desktop *d, Window window, int x, int y, int width, int height,
+                 unsigned red, unsigned green, unsigned blue) {
+    if (width <= 0 || height <= 0) return;
+    XSetForeground(d->display, d->gc, rgb(d, red, green, blue));
+    XFillRectangle(d->display, window, d->gc, x, y, (unsigned)width, (unsigned)height);
+}
+
+static void label(struct desktop *d, Window window, int x, int y, XftFont *font,
+                  const char *text, unsigned red, unsigned green, unsigned blue) {
+    if (d->light && red == 239 && green == 245 && blue == 255) {
+        red = 24; green = 42; blue = 62;
+    } else if (d->light && red == 157 && green == 176 && blue == 198) {
+        red = 70; green = 91; blue = 112;
+    }
+    XftDraw *draw = window == d->dock ? d->dock_draw : d->background_draw;
+    XftColor color = {.pixel = rgb(d, red, green, blue),
+                      .color = {(unsigned short)(red * 257), (unsigned short)(green * 257),
+                                (unsigned short)(blue * 257), 65535}};
+    XftDrawStringUtf8(draw, &color, font, x, y, (const FcChar8 *)text, (int)strlen(text));
+}
+
+static void hit(struct desktop *d, Window window, int x, int y, int width, int height,
+                enum action action, int index) {
+    if (d->hit_count >= MAX_HITS) return;
+    d->hits[d->hit_count++] = (struct hit){window, x, y, width, height, action, index};
+}
+
+static void button(struct desktop *d, Window window, int x, int y, int width, int height,
+                   const char *text, enum action action, int index, bool accent) {
+    if (accent) fill(d, window, x, y, width, height, 80, 225, 190);
+    else fill(d, window, x, y, width, height, d->light ? 218 : 29,
+              d->light ? 230 : 48, d->light ? 239 : 65);
+    XftFont *font = window == d->dock ? d->font_small : d->font_body;
+    label(d, window, x + (window == d->dock ? 10 : 14),
+          y + height / 2 + font->ascent / 2 - 2,
+          font, text, accent ? 8 : d->light ? 20 : 235,
+          accent ? 39 : d->light ? 39 : 243, accent ? 32 : d->light ? 55 : 250);
+    hit(d, window, x, y, width, height, action, index);
+}
+
+static bool send_request(struct desktop *d, const char *action, const char *value,
+                         struct json_object **data) {
+    *data = NULL;
+    struct sockaddr_un address = {.sun_family = AF_UNIX};
+    if (strlen(d->control_socket) >= sizeof address.sun_path) return false;
+    strcpy(address.sun_path, d->control_socket);
+    int fd = socket(AF_UNIX, SOCK_STREAM, 0);
+    if (fd < 0) return false;
+    if (connect(fd, (struct sockaddr *)&address, sizeof address)) { close(fd); return false; }
+    char frame[1024];
+    int length = value ? snprintf(frame, sizeof frame,
+                                  "{\"version\":1,\"action\":\"%s\",\"value\":%s}\n", action, value) :
+                         snprintf(frame, sizeof frame, "{\"version\":1,\"action\":\"%s\"}\n", action);
+    if (length < 0 || length >= (int)sizeof frame || write(fd, frame, (size_t)length) != length) {
+        close(fd); return false;
+    }
+    char response[65536];
+    size_t used = 0;
+    int response_timeout = !strcmp(action, "network-connect") ? 40000 : 12000;
+    while (used < sizeof response - 1) {
+        struct pollfd input = {.fd = fd, .events = POLLIN};
+        if (poll(&input, 1, response_timeout) <= 0) break;
+        ssize_t n = read(fd, response + used, 1);
+        if (n != 1) break;
+        if (response[used++] == '\n') break;
+    }
+    close(fd);
+    if (!used || response[used - 1] != '\n') return false;
+    response[used] = 0;
+    struct json_object *root = json_tokener_parse(response), *okay = NULL, *item = NULL;
+    if (!root || !json_object_object_get_ex(root, "ok", &okay)) {
+        if (root) json_object_put(root);
+        return false;
+    }
+    if (!json_object_get_boolean(okay)) {
+        if (json_object_object_get_ex(root, "error", &item))
+            snprintf(d->notice, sizeof d->notice, "%s", json_object_get_string(item));
+        json_object_put(root);
+        return false;
+    }
+    if (json_object_object_get_ex(root, "data", &item) && item) *data = json_object_get(item);
+    json_object_put(root);
+    return true;
+}
+
+static struct json_object *field(struct json_object *object, const char *key) {
+    struct json_object *value = NULL;
+    if (object) json_object_object_get_ex(object, key, &value);
+    return value;
+}
+
+static void copy_field(char *destination, size_t size, struct json_object *object,
+                       const char *key, const char *fallback) {
+    struct json_object *value = field(object, key);
+    const char *source = value && json_object_get_type(value) == json_type_string ?
+                         json_object_get_string(value) : fallback;
+    snprintf(destination, size, "%s", source);
+}
+
+static void refresh_status(struct desktop *d) {
+    struct json_object *data = NULL;
+    if (!send_request(d, "status", NULL, &data) || !data) {
+        snprintf(d->notice, sizeof d->notice, "Local control service unavailable"); return;
+    }
+    copy_field(d->hostname, sizeof d->hostname, data, "hostname", "Companion");
+    struct json_object *platform = field(data, "platform");
+    d->dell = platform && !strcmp(json_object_get_string(platform), "dell");
+    copy_field(d->boot_id, sizeof d->boot_id, data, "boot_id", "");
+    d->status_ready = d->boot_id[0] != 0;
+    copy_field(d->kernel, sizeof d->kernel, data, "kernel", "Linux");
+    struct json_object *network = field(data, "network");
+    d->address[0] = 0;
+    if (network && json_object_get_type(network) == json_type_array) {
+        for (size_t i = 0; i < json_object_array_length(network); i++) {
+            struct json_object *entry = json_object_array_get_idx(network, i);
+            struct json_object *interface = field(entry, "interface");
+            if (interface && !strcmp(json_object_get_string(interface), "eth0")) {
+                copy_field(d->address, sizeof d->address, entry, "address", "");
+                break;
+            }
+        }
+        if (!d->address[0] && !d->dell && json_object_array_length(network))
+            copy_field(d->address, sizeof d->address, json_object_array_get_idx(network, 0),
+                       "address", "");
+    }
+    struct json_object *memory = field(data, "memory");
+    d->total_memory = json_object_get_int64(field(memory, "MemTotal"));
+    d->free_memory = json_object_get_int64(field(memory, "MemAvailable"));
+    struct json_object *management = field(data, "management");
+    d->ssh = json_object_get_boolean(field(management, "ssh"));
+    d->watch = json_object_get_boolean(field(management, "watch"));
+    d->boot_healthy = json_object_get_boolean(field(management, "boot_healthy"));
+    d->brightness = json_object_get_int(field(data, "brightness"));
+    struct json_object *batteries = field(data, "batteries");
+    d->battery = batteries && json_object_get_type(batteries) == json_type_array &&
+        json_object_array_length(batteries) ?
+        json_object_get_int(field(json_object_array_get_idx(batteries, 0), "capacity")) : -1;
+    struct json_object *prefs = field(data, "preferences");
+    struct json_object *theme = field(prefs, "theme");
+    d->light = theme && !strcmp(json_object_get_string(theme), "light");
+    json_object_put(data);
+}
+
+static void refresh_page(struct desktop *d) {
+    if (!d->dell) return;
+    struct json_object *data = NULL;
+    if (d->page == SETTINGS && send_request(d, "input-status", NULL, &data) && data) {
+        d->tap = json_object_get_boolean(field(data, "tap"));
+        d->natural_scroll = json_object_get_boolean(field(data, "natural_scroll"));
+        d->pointer_speed = json_object_get_double(field(data, "speed"));
+    }
+    if (data) { json_object_put(data); data = NULL; }
+    if (d->page == SOUND && send_request(d, "sound-status", NULL, &data) && data) {
+        d->sound_left = json_object_get_int(field(data, "volume_left"));
+        d->sound_right = json_object_get_int(field(data, "volume_right"));
+        d->muted = json_object_get_boolean(field(data, "muted"));
+    }
+    if (data) { json_object_put(data); data = NULL; }
+    if (d->page == NETWORK && send_request(d, "network-status", NULL, &data) && data) {
+        copy_field(d->wifi_state, sizeof d->wifi_state, data, "state", "Unknown");
+        copy_field(d->wifi_address, sizeof d->wifi_address, data, "address", "");
+        copy_field(d->wifi_connected, sizeof d->wifi_connected, data, "ssid", "");
+    }
+    if (data) { json_object_put(data); data = NULL; }
+    if (d->page == DEVICE && send_request(d, "bios-list", NULL, &data) && data) {
+        if (d->bios_items) json_object_put(d->bios_items);
+        d->bios_items = data;
+        data = NULL;
+    }
+    if (data) json_object_put(data);
+}
+
+static bool is_shell_window(struct desktop *d, Window window) {
+    Atom actual;
+    int format;
+    unsigned long count, remaining;
+    unsigned char *property = NULL;
+    if (XGetWindowProperty(d->display, window, d->type_atom, 0, 16, False, XA_ATOM,
+                           &actual, &format, &count, &remaining, &property) != Success)
+        return false;
+    bool skip = false;
+    if (actual == XA_ATOM && format == 32)
+        for (unsigned long i = 0; i < count; i++) {
+            Atom type = ((Atom *)property)[i];
+            if (type == d->desktop_atom || type == d->dock_atom) skip = true;
+        }
+    if (property) XFree(property);
+    return skip;
+}
+
+static void refresh_tasks(struct desktop *d) {
+    d->task_count = 0;
+    Atom actual;
+    int format;
+    unsigned long count, remaining;
+    unsigned char *property = NULL;
+    if (XGetWindowProperty(d->display, RootWindow(d->display, d->screen),
+                           d->client_list_atom, 0, 256, False, XA_WINDOW,
+                           &actual, &format, &count, &remaining, &property) != Success) return;
+    if (actual == XA_WINDOW && format == 32) {
+        for (unsigned long i = 0; i < count && d->task_count < MAX_TASKS; i++) {
+            Window window = ((Window *)property)[i];
+            if (window == d->background || window == d->dock || is_shell_window(d, window)) continue;
+            char *title = NULL;
+            if (!XFetchName(d->display, window, &title) || !title || !*title) {
+                if (title) XFree(title);
+                continue;
+            }
+            struct task *task = &d->tasks[d->task_count++];
+            task->window = window;
+            snprintf(task->title, sizeof task->title, "%.20s", title);
+            XFree(title);
+        }
+    }
+    if (property) XFree(property);
+}
+
+static void render_dock(struct desktop *d) {
+    fill(d, d->dock, 0, 0, d->dock_width, 68, d->light ? 240 : 15,
+         d->light ? 246 : 27, d->light ? 250 : 40);
+    int x = 14;
+    button(d, d->dock, x, 10, 114, 46, "Companion", SHOW_MENU, 0, true); x += 120;
+    const struct { const char *title; enum action action; int width; } apps[] = {
+        {"Files", LAUNCH_FILES, 64}, {"Editor", LAUNCH_EDITOR, 70},
+        {"Browser", LAUNCH_BROWSER, 82}, {"Terminal", LAUNCH_TERMINAL, 86}
+    };
+    for (size_t i = 0; i < sizeof apps / sizeof apps[0]; i++) {
+        button(d, d->dock, x, 10, apps[i].width, 46, apps[i].title, apps[i].action, 0, false);
+        x += apps[i].width + 5;
+    }
+    int limit = d->dock_width - 225;
+    for (int i = 0; i < d->task_count && x + 70 < limit; i++) {
+        int width = (int)strlen(d->tasks[i].title) * 8 + 22;
+        if (width > 160) width = 160;
+        if (x + width > limit) width = limit - x;
+        button(d, d->dock, x, 10, width, 46, d->tasks[i].title, SWITCH_TASK, i, false);
+        x += width + 5;
+    }
+    time_t now = time(NULL);
+    struct tm local;
+    localtime_r(&now, &local);
+    char clock_text[16];
+    strftime(clock_text, sizeof clock_text, "%H:%M", &local);
+    label(d, d->dock, d->dock_width - 205, 39, d->font_small,
+          d->address[0] ? d->address : d->wifi_address[0] ? d->wifi_address : "Offline",
+          157, 176, 198);
+    label(d, d->dock, d->dock_width - 60, 39, d->font_small, clock_text, 239, 245, 255);
+}
+
+static void render_workspace(struct desktop *d) {
+    label(d, d->background, 56, 88, d->font_body, "C O M P A N I O N", 80, 225, 190);
+    label(d, d->background, 56, 164, d->font_large, "Your workspace", 239, 245, 255);
+    label(d, d->background, 58, 195, d->font_body,
+          "Applications, files and system settings", 157, 176, 198);
+    const struct { const char *title; enum action action; } items[] = {
+        {"Files", LAUNCH_FILES}, {"Editor", LAUNCH_EDITOR},
+        {"Browser", LAUNCH_BROWSER}, {"Terminal", LAUNCH_TERMINAL},
+        {"Keyboard", LAUNCH_KEYBOARD}, {"Network", SHOW_NETWORK},
+        {"Settings", SHOW_SETTINGS}, {d->dell ? "Sound" : "System",
+                                     d->dell ? SHOW_SOUND : SHOW_OVERVIEW}
+    };
+    for (int i = 0; i < 8; i++) {
+        int x = 58 + (i % 4) * 190, y = 260 + (i / 4) * 126;
+        button(d, d->background, x, y, 172, 108, items[i].title, items[i].action, 0, false);
+    }
+    label(d, d->background, 58, d->height - 120, d->font_small,
+          "Companion on Linux  ·  Alt+Tab: switch windows", 157, 176, 198);
+}
+
+static const char *bios_name(int index) {
+    static const char *names[] = {"FnLock", "FnLockMode", "KeyboardIllumination",
+                                  "KbdBacklightTimeoutAc", "KbdBacklightTimeoutBatt"};
+    return index >= 0 && index < 5 ? names[index] : NULL;
+}
+
+static bool bios_value_at(struct desktop *d, int index, char *out, size_t size) {
+    const char *name = bios_name(d->bios_selected);
+    struct json_object *item = name ? field(d->bios_items, name) : NULL;
+    struct json_object *possible = field(item, "possible_values");
+    if (!possible || json_object_get_type(possible) != json_type_string) return false;
+    char values[2048];
+    snprintf(values, sizeof values, "%s", json_object_get_string(possible));
+    char *save = NULL;
+    for (char *token = strtok_r(values, ";", &save); token;
+         token = strtok_r(NULL, ";", &save), index--)
+        if (index == 0) { snprintf(out, size, "%s", token); return true; }
+    return false;
+}
+
+static int bios_value_count(struct desktop *d) {
+    char value[128];
+    int count = 0;
+    while (count < 64 && bios_value_at(d, count, value, sizeof value)) count++;
+    return count;
+}
+
+static void render_page(struct desktop *d) {
+    unsigned br = d->light ? 247 : 9, bg = d->light ? 250 : 19, bb = d->light ? 252 : 31;
+    fill(d, d->background, 0, 0, d->width, d->height, br, bg, bb);
+    XSetForeground(d->display, d->gc, rgb(d, 18, 64, 83));
+    XFillArc(d->display, d->background, d->gc, d->width / 2, 90,
+             (unsigned)d->width, (unsigned)d->height, 0, 360 * 64);
+    if (d->power_mode) {
+        label(d, d->background, 48, 72, d->font_body,
+              "C O M P A N I O N", 80, 225, 190);
+        label(d, d->background, 48, 133, d->font_large,
+              "Power", 239, 245, 255);
+        label(d, d->background, 48, 187, d->font_small,
+              "Restart or shut down with Companion's checked power control.",
+              157, 176, 198);
+        button(d, d->background, 48, 220, 250, 70,
+               d->pending_power == RESTART_VM && time(NULL) <= d->power_deadline ?
+                   "Confirm restart" : "Restart", RESTART_VM, 0, false);
+        button(d, d->background, 322, 220, 250, 70,
+               d->pending_power == SHUT_DOWN_VM && time(NULL) <= d->power_deadline ?
+                   "Confirm shut down" : "Shut down", SHUT_DOWN_VM, 0, false);
+        if (d->pending_power != NONE && time(NULL) <= d->power_deadline)
+            label(d, d->background, 48, 325, d->font_small,
+                  "Click the same button again within 10 seconds.",
+                  157, 176, 198);
+        return;
+    }
+    if (d->page == WORKSPACE) { render_workspace(d); return; }
+    const char *title = d->page == MENU ? "Companion" :
+                        d->page == OVERVIEW ? "System overview" :
+                        d->page == SETTINGS ? "Appearance and input" :
+                        d->page == DEVICE ? "Device information" :
+                        d->page == NETWORK ? "Network" : "Sound";
+    label(d, d->background, 56, 92, d->font_body, "C O M P A N I O N", 80, 225, 190);
+    label(d, d->background, 56, 164, d->font_large, title, 239, 245, 255);
+    if (!d->settings_mode || d->page != MENU)
+        button(d, d->background, 58, 195, 190, 44,
+               d->settings_mode ? "Companion menu" : "Back to desktop",
+               d->settings_mode ? SHOW_MENU : SHOW_WORKSPACE, 0, false);
+    char line[256];
+    if (d->page == MENU) {
+        const struct { const char *label; enum action action; } pages[] = {
+            {d->settings_mode ? "Close Companion" : "Desktop", SHOW_WORKSPACE},
+            {"System overview", SHOW_OVERVIEW},
+            {"Settings", SHOW_SETTINGS}, {"Device information", SHOW_DEVICE},
+            {"Network", SHOW_NETWORK}, {"On-screen keyboard", LAUNCH_KEYBOARD},
+            {"Administrator access", ADMIN_CONSOLE},
+            {d->pending_power == RESTART_VM && time(NULL) <= d->power_deadline ?
+                "Confirm restart" : "Restart", RESTART_VM},
+            {d->pending_power == SHUT_DOWN_VM && time(NULL) <= d->power_deadline ?
+                "Confirm shutdown" : "Shut down", SHUT_DOWN_VM},
+            {"Sound", SHOW_SOUND}
+        };
+        for (int i = 0; i < (d->dell ? 10 : 9); i++)
+            button(d, d->background, 58 + (i % 2) * 250, 285 + (i / 2) * 82,
+                   230, 62, pages[i].label, pages[i].action, 0, false);
+    } else if (d->page == OVERVIEW) {
+        snprintf(line, sizeof line, "Computer: %s", d->hostname);
+        label(d, d->background, 58, 304, d->font_body, line, 239, 245, 255);
+        snprintf(line, sizeof line, "Linux kernel: %s", d->kernel);
+        label(d, d->background, 58, 350, d->font_body, line, 239, 245, 255);
+        snprintf(line, sizeof line, "Available memory: %lld / %lld MiB",
+                 d->free_memory / 1048576, d->total_memory / 1048576);
+        label(d, d->background, 58, 396, d->font_body, line, 239, 245, 255);
+        snprintf(line, sizeof line, "Management: SSH %s  ·  Watch %s  ·  Boot %s",
+                 d->ssh ? "ready" : "unavailable", d->watch ? "ready" : "unavailable",
+                 d->boot_healthy ? "healthy" : "unconfirmed");
+        label(d, d->background, 58, 442, d->font_body, line, 239, 245, 255);
+        if (d->dell) {
+            snprintf(line, sizeof line, "Battery: %s", d->battery >= 0 ? "present" : "unavailable");
+            if (d->battery >= 0) snprintf(line, sizeof line, "Battery: %d%%", d->battery);
+            label(d, d->background, 58, 488, d->font_body, line, 157, 176, 198);
+            button(d, d->background, 58, 530, 190, 52, "Speaker controls", SHOW_SOUND, 0, false);
+        } else label(d, d->background, 58, 488, d->font_body,
+                     "Virtual audio · no physical speakers", 157, 176, 198);
+    } else if (d->page == SETTINGS) {
+        snprintf(line, sizeof line, "Appearance: %s", d->light ? "Light" : "Night");
+        label(d, d->background, 58, 310, d->font_body, line, 239, 245, 255);
+        button(d, d->background, 58, 338, 225, 52, "Change appearance", TOGGLE_THEME, 0, true);
+        if (d->dell) {
+            snprintf(line, sizeof line, "Brightness: %d%%", d->brightness);
+            label(d, d->background, 58, 445, d->font_body, line, 239, 245, 255);
+            button(d, d->background, 58, 468, 110, 48, "Dim", DIMMER, 0, false);
+            button(d, d->background, 180, 468, 125, 48, "Brighten", BRIGHTER, 0, false);
+            snprintf(line, sizeof line, "Touchpad tap: %s", d->tap ? "On" : "Off");
+            button(d, d->background, 58, 550, 260, 48, line, TAP_TOGGLE, 0, false);
+            snprintf(line, sizeof line, "Natural scroll: %s", d->natural_scroll ? "On" : "Off");
+            button(d, d->background, 330, 550, 300, 48, line, SCROLL_TOGGLE, 0, false);
+            snprintf(line, sizeof line, "Pointer speed: %.1f", d->pointer_speed);
+            label(d, d->background, 58, 670, d->font_body, line, 239, 245, 255);
+            button(d, d->background, 58, 695, 120, 48, "Slower", SPEED_DOWN, 0, false);
+            button(d, d->background, 190, 695, 120, 48, "Faster", SPEED_UP, 0, false);
+        } else {
+            label(d, d->background, 58, 440, d->font_body,
+                  "Virtual keyboard and pointer active", 239, 245, 255);
+            label(d, d->background, 58, 478, d->font_small,
+                  "Physical touchpad settings are unavailable on this VM", 157, 176, 198);
+        }
+    } else if (d->page == DEVICE) {
+        if (d->dell) {
+            label(d, d->background, 58, 300, d->font_body,
+                  "Dell Inspiron 7506 2n1 · BIOS attributes", 239, 245, 255);
+            for (int i = 0; i < 5; i++) {
+                const char *name = bios_name(i);
+                struct json_object *item = field(d->bios_items, name);
+                copy_field(line, sizeof line, item, "current_value", "Unavailable");
+                char entry[320];
+                snprintf(entry, sizeof entry, "%s: %s", name, line);
+                button(d, d->background, 58, 335 + i * 58, 480, 48, entry,
+                       BIOS_SELECT, i, i == d->bios_selected);
+            }
+            char choice[128];
+            if (d->bios_choice >= 0 && bios_value_at(d, d->bios_choice, choice, sizeof choice))
+                snprintf(line, sizeof line, "Selected value: %s", choice);
+            else snprintf(line, sizeof line, "Select a value for %s", bios_name(d->bios_selected));
+            label(d, d->background, 58, 675, d->font_body, line, 239, 245, 255);
+            button(d, d->background, 58, 705, 180, 48, "Next value", BIOS_NEXT, 0, false);
+            button(d, d->background, 250, 705, 180, 48, "Apply value", BIOS_APPLY, 0, true);
+        } else {
+            label(d, d->background, 58, 310, d->font_body,
+                  "Microsoft Hyper-V virtual machine", 239, 245, 255);
+            label(d, d->background, 58, 354, d->font_body,
+                  "Dell BIOS controls are unavailable here", 157, 176, 198);
+        }
+    } else if (d->page == NETWORK) {
+        snprintf(line, sizeof line, "Ethernet: %s", d->address[0] ? d->address : "Offline");
+        label(d, d->background, 58, 310, d->font_body, line, 239, 245, 255);
+        if (d->dell) {
+            snprintf(line, sizeof line, "Wi-Fi: %s  %.32s  %s", d->wifi_state,
+                     d->wifi_connected, d->wifi_address[0] ? d->wifi_address : "");
+            label(d, d->background, 58, 352, d->font_body, line, 239, 245, 255);
+            button(d, d->background, 58, 380, 180, 48, "Scan networks", WIFI_SCAN, 0, false);
+            for (int i = 0; i < d->network_count && i < 8; i++)
+                button(d, d->background, 58 + (i % 2) * 335, 445 + (i / 2) * 55,
+                       320, 46, d->networks[i], WIFI_SELECT, i, false);
+            snprintf(line, sizeof line, "Name: %.32s", d->wifi_ssid);
+            label(d, d->background, 58, 695, d->font_body, line, 239, 245, 255);
+            char masked[64];
+            size_t length = strlen(d->wifi_password);
+            if (length >= sizeof masked) length = sizeof masked - 1;
+            memset(masked, '*', length);
+            masked[length] = 0;
+            snprintf(line, sizeof line, "Password: %s%s", masked,
+                     d->password_focus ? " |" : "");
+            button(d, d->background, 58, 712, 530, 46, line, WIFI_PASSWORD, 0, false);
+            button(d, d->background, 600, 712, 190, 46, "Connect", WIFI_CONNECT, 0, true);
+            label(d, d->background, 58, 795, d->font_small,
+                  "Select a network, enter its WPA password, then Connect.", 157, 176, 198);
+        } else label(d, d->background, 58, 354, d->font_body,
+                     "No wireless interface is present on this VM", 157, 176, 198);
+    } else if (d->page == SOUND && d->dell) {
+        snprintf(line, sizeof line, "Left speaker: %d%%", d->sound_left);
+        label(d, d->background, 58, 310, d->font_body, line, 239, 245, 255);
+        button(d, d->background, 58, 340, 160, 52, "Quieter", SOUND_LEFT_DOWN, 0, false);
+        button(d, d->background, 232, 340, 160, 52, "Louder", SOUND_LEFT_UP, 0, false);
+        snprintf(line, sizeof line, "Right speaker: %d%%", d->sound_right);
+        label(d, d->background, 58, 445, d->font_body, line, 239, 245, 255);
+        button(d, d->background, 58, 475, 160, 52, "Quieter", SOUND_RIGHT_DOWN, 0, false);
+        button(d, d->background, 232, 475, 160, 52, "Louder", SOUND_RIGHT_UP, 0, false);
+        snprintf(line, sizeof line, "Speaker: %s", d->muted ? "Muted" : "On");
+        button(d, d->background, 58, 565, 230, 52, line, SOUND_MUTE, 0, true);
+    }
+}
+
+static void redraw(struct desktop *d) {
+    d->hit_count = 0;
+    render_page(d);
+    if (d->notice[0]) label(d, d->background, 58,
+                             d->power_mode ? d->height - 38 : d->height - 155,
+                             d->font_small,
+                             d->notice, 80, 225, 190);
+    if (!d->settings_mode) render_dock(d);
+    XFlush(d->display);
+}
+
+static bool ensure_visible(struct desktop *d) {
+    XWindowAttributes background, dock;
+    if (!XGetWindowAttributes(d->display, d->background, &background) ||
+        !XGetWindowAttributes(d->display, d->dock, &dock)) return false;
+    bool remapped = background.map_state != IsViewable || dock.map_state != IsViewable;
+    if (background.map_state != IsViewable) XMapWindow(d->display, d->background);
+    if (dock.map_state != IsViewable) XMapWindow(d->display, d->dock);
+    if (remapped) {
+        XLowerWindow(d->display, d->background);
+        XRaiseWindow(d->display, d->dock);
+    }
+    Window child;
+    int x, y;
+    Window root = RootWindow(d->display, d->screen);
+    if (!XTranslateCoordinates(d->display, d->dock, root, 0, 0, &x, &y, &child))
+        return false;
+    if (x != d->dock_x || y != d->dock_y)
+        XMoveWindow(d->display, d->dock, d->dock_x, d->dock_y);
+    XSync(d->display, False);
+    if (!XTranslateCoordinates(d->display, d->dock, root, 0, 0, &x, &y, &child) ||
+        x != d->dock_x || y != d->dock_y) return false;
+    return XGetWindowAttributes(d->display, d->background, &background) &&
+           XGetWindowAttributes(d->display, d->dock, &dock) &&
+           background.map_state == IsViewable && dock.map_state == IsViewable;
+}
+
+static void publish_health(struct desktop *d) {
+    if (!d->status_ready || d->published_page == (int)d->page ||
+        strcmp(DisplayString(d->display), ":0") || !ensure_visible(d)) return;
+    const char *home = getenv("HOME");
+    if (!home || *home != '/') return;
+    char executable[512], path[1024], temporary[1040];
+    ssize_t length = readlink("/proc/self/exe", executable, sizeof executable - 1);
+    if (length <= 0 || length >= (ssize_t)sizeof executable - 1) return;
+    executable[length] = 0;
+    char *slash = strrchr(executable, '/');
+    if (!slash) return;
+    *slash = 0;
+    if (snprintf(path, sizeof path, "%s/.local/state/companion/session-health-native.json", home) >= (int)sizeof path ||
+        snprintf(temporary, sizeof temporary, "%s.new.XXXXXX", path) >= (int)sizeof temporary) return;
+    struct json_object *record = json_object_new_object();
+    json_object_object_add(record, "pid", json_object_new_int((int)getpid()));
+    json_object_object_add(record, "uid", json_object_new_int((int)getuid()));
+    json_object_object_add(record, "release", json_object_new_string(executable));
+    json_object_object_add(record, "boot_id", json_object_new_string(d->boot_id));
+    json_object_object_add(record, "version", json_object_new_string("native-0.1"));
+    const char *pages[] = {"workspace", "menu", "overview", "settings", "device", "network", "sound"};
+    _Static_assert(sizeof pages / sizeof pages[0] == SOUND + 1,
+                   "every desktop page needs a health name");
+    json_object_object_add(record, "page", json_object_new_string(pages[d->page]));
+    const char *data = json_object_to_json_string_ext(record, JSON_C_TO_STRING_PLAIN);
+    int fd = mkstemp(temporary);
+    if (fd >= 0) {
+        size_t size = strlen(data);
+        bool okay = fchmod(fd, 0600) == 0 && write(fd, data, size) == (ssize_t)size &&
+                    write(fd, "\n", 1) == 1 && fsync(fd) == 0;
+        if (close(fd)) okay = false;
+        if (okay) okay = rename(temporary, path) == 0;
+        if (okay) d->published_page = d->page;
+        else unlink(temporary);
+    }
+    json_object_put(record);
+}
+
+static void launch(struct desktop *d, const char *path) {
+    if (access(path, X_OK)) {
+        snprintf(d->notice, sizeof d->notice, "Application is not installed yet"); return;
+    }
+    pid_t pid = fork();
+    if (pid < 0) { snprintf(d->notice, sizeof d->notice, "Could not start application"); return; }
+    if (!pid) {
+        setsid();
+        execl(path, path, (char *)NULL);
+        _exit(127);
+    }
+    d->notice[0] = 0;
+}
+
+static void launch_native(struct desktop *d, const char *name) {
+    char path[512];
+    ssize_t length = readlink("/proc/self/exe", path, sizeof path - 1);
+    if (length <= 0 || length >= (ssize_t)sizeof path - 1) return;
+    path[length] = 0;
+    char *slash = strrchr(path, '/');
+    if (!slash || (size_t)(slash - path) + 1 + strlen(name) >= sizeof path) return;
+    strcpy(slash + 1, name);
+    launch(d, path);
+}
+
+static void activate_task(struct desktop *d, int index) {
+    if (index < 0 || index >= d->task_count) return;
+    Window window = d->tasks[index].window;
+    XMapRaised(d->display, window);
+    XEvent event = {0};
+    event.xclient.type = ClientMessage;
+    event.xclient.window = window;
+    event.xclient.message_type = d->active_atom;
+    event.xclient.format = 32;
+    event.xclient.data.l[0] = 1;
+    XSendEvent(d->display, RootWindow(d->display, d->screen), False,
+               SubstructureRedirectMask | SubstructureNotifyMask, &event);
+}
+
+static void run_action(struct desktop *d, enum action action, int index) {
+    if (action != RESTART_VM && action != SHUT_DOWN_VM) d->pending_power = NONE;
+    enum page previous_page = d->page;
+    switch (action) {
+    case SHOW_WORKSPACE:
+        if (d->settings_mode) { XCloseDisplay(d->display); exit(0); }
+        d->page = WORKSPACE;
+        break;
+    case SHOW_MENU: d->page = MENU; break;
+    case SHOW_OVERVIEW: d->page = OVERVIEW; break;
+    case SHOW_SETTINGS: d->page = SETTINGS; break;
+    case SHOW_DEVICE: d->page = DEVICE; break;
+    case SHOW_NETWORK: d->page = NETWORK; break;
+    case SHOW_SOUND: if (d->dell) d->page = SOUND; break;
+    case LAUNCH_FILES: launch_native(d, "companion-files"); break;
+    case LAUNCH_EDITOR: launch_native(d, "companion-editor"); break;
+    case LAUNCH_BROWSER: launch(d, "/usr/bin/firefox"); break;
+    case LAUNCH_TERMINAL: launch_native(d, "companion-terminal"); break;
+    case LAUNCH_KEYBOARD: launch(d, "/usr/bin/onboard"); break;
+    case TOGGLE_THEME: {
+        struct json_object *data = NULL;
+        if (send_request(d, "theme", d->light ? "\"night\"" : "\"light\"", &data)) {
+            d->light = !d->light;
+            d->notice[0] = 0;
+        }
+        if (data) json_object_put(data);
+        break;
+    }
+    case SWITCH_TASK: activate_task(d, index); break;
+    case MINIMIZE_TASKS:
+        for (int i = 0; i < d->task_count; i++) XIconifyWindow(d->display, d->tasks[i].window, d->screen);
+        d->page = WORKSPACE;
+        break;
+    case ADMIN_CONSOLE:
+        snprintf(d->notice, sizeof d->notice, "Use authenticated root SSH for administration");
+        break;
+    case BRIGHTER:
+    case DIMMER: {
+        int target = d->brightness + (action == BRIGHTER ? 10 : -10);
+        if (target < 5) target = 5;
+        if (target > 100) target = 100;
+        char value[16];
+        snprintf(value, sizeof value, "%d", target);
+        struct json_object *data = NULL;
+        if (send_request(d, "brightness", value, &data)) refresh_status(d);
+        if (data) json_object_put(data);
+        break;
+    }
+    case TAP_TOGGLE:
+    case SCROLL_TOGGLE:
+    case SPEED_UP:
+    case SPEED_DOWN: {
+        char value[96];
+        if (action == TAP_TOGGLE)
+            snprintf(value, sizeof value, "{\"tap\":%s}", d->tap ? "false" : "true");
+        else if (action == SCROLL_TOGGLE)
+            snprintf(value, sizeof value, "{\"natural_scroll\":%s}",
+                     d->natural_scroll ? "false" : "true");
+        else {
+            double speed = d->pointer_speed + (action == SPEED_UP ? 0.1 : -0.1);
+            if (speed > 1) speed = 1;
+            if (speed < -1) speed = -1;
+            snprintf(value, sizeof value, "{\"speed\":%.1f}", speed);
+        }
+        struct json_object *data = NULL;
+        if (send_request(d, "input-settings", value, &data)) refresh_page(d);
+        if (data) json_object_put(data);
+        break;
+    }
+    case WIFI_SCAN: {
+        struct json_object *data = NULL;
+        d->network_count = 0;
+        snprintf(d->notice, sizeof d->notice, "Scanning Wi-Fi networks...");
+        redraw(d);
+        if (send_request(d, "network-scan", NULL, &data) && data) {
+            struct json_object *networks = field(data, "networks");
+            if (networks && json_object_get_type(networks) == json_type_array)
+                for (size_t i = 0; i < json_object_array_length(networks) && i < 12; i++) {
+                    struct json_object *name = json_object_array_get_idx(networks, i);
+                    if (name && json_object_get_type(name) == json_type_string)
+                        snprintf(d->networks[d->network_count++], sizeof d->networks[0],
+                                 "%s", json_object_get_string(name));
+                }
+            snprintf(d->notice, sizeof d->notice, "%d networks found", d->network_count);
+        }
+        if (data) json_object_put(data);
+        break;
+    }
+    case WIFI_SELECT:
+        if (index >= 0 && index < d->network_count) {
+            snprintf(d->wifi_ssid, sizeof d->wifi_ssid, "%s", d->networks[index]);
+            explicit_bzero(d->wifi_password, sizeof d->wifi_password);
+            d->password_focus = true;
+            d->notice[0] = 0;
+        }
+        break;
+    case WIFI_PASSWORD:
+        d->password_focus = true;
+        XSetInputFocus(d->display, d->background, RevertToPointerRoot, CurrentTime);
+        break;
+    case WIFI_CONNECT: {
+        if (!d->wifi_ssid[0] || strlen(d->wifi_password) < 8) {
+            snprintf(d->notice, sizeof d->notice, "Select a network and enter its WPA password");
+            break;
+        }
+        struct json_object *values = json_object_new_object(), *data = NULL;
+        json_object_object_add(values, "ssid", json_object_new_string(d->wifi_ssid));
+        json_object_object_add(values, "password", json_object_new_string(d->wifi_password));
+        snprintf(d->notice, sizeof d->notice, "Connecting to Wi-Fi; waiting for an address...");
+        redraw(d);
+        bool okay = send_request(d, "network-connect",
+            json_object_to_json_string_ext(values, JSON_C_TO_STRING_PLAIN), &data);
+        json_object_put(values);
+        explicit_bzero(d->wifi_password, sizeof d->wifi_password);
+        d->password_focus = false;
+        if (okay) {
+            snprintf(d->notice, sizeof d->notice, "Wi-Fi connected with an address");
+            refresh_page(d);
+        }
+        if (data) json_object_put(data);
+        break;
+    }
+    case SOUND_LEFT_UP:
+    case SOUND_LEFT_DOWN:
+    case SOUND_RIGHT_UP:
+    case SOUND_RIGHT_DOWN:
+    case SOUND_MUTE: {
+        char value[64];
+        if (action == SOUND_MUTE)
+            snprintf(value, sizeof value, "{\"muted\":%s}", d->muted ? "false" : "true");
+        else {
+            bool left_channel = action == SOUND_LEFT_UP || action == SOUND_LEFT_DOWN;
+            int target = (left_channel ? d->sound_left : d->sound_right) +
+                         ((action == SOUND_LEFT_UP || action == SOUND_RIGHT_UP) ? 10 : -10);
+            if (target < 0) target = 0;
+            if (target > 100) target = 100;
+            snprintf(value, sizeof value, "{\"volume_left\":%d,\"volume_right\":%d}",
+                     left_channel ? target : d->sound_left,
+                     left_channel ? d->sound_right : target);
+        }
+        struct json_object *data = NULL;
+        if (send_request(d, "sound-settings", value, &data)) refresh_page(d);
+        if (data) json_object_put(data);
+        break;
+    }
+    case BIOS_SELECT:
+        if (index >= 0 && index < 5) { d->bios_selected = index; d->bios_choice = -1; }
+        break;
+    case BIOS_NEXT: {
+        int count = bios_value_count(d);
+        if (count) d->bios_choice = (d->bios_choice + 1) % count;
+        break;
+    }
+    case BIOS_APPLY: {
+        char choice[128];
+        if (d->bios_choice < 0 || !bios_value_at(d, d->bios_choice, choice, sizeof choice)) {
+            snprintf(d->notice, sizeof d->notice, "Select a BIOS value first"); break;
+        }
+        struct json_object *value = json_object_new_object(), *data = NULL;
+        json_object_object_add(value, "name", json_object_new_string(bios_name(d->bios_selected)));
+        json_object_object_add(value, "value", json_object_new_string(choice));
+        bool okay = send_request(d, "bios-set",
+            json_object_to_json_string_ext(value, JSON_C_TO_STRING_PLAIN), &data);
+        json_object_put(value);
+        if (okay) {
+            snprintf(d->notice, sizeof d->notice, "BIOS setting applied; restart may be required");
+            d->bios_choice = -1;
+            refresh_page(d);
+        }
+        if (data) json_object_put(data);
+        break;
+    }
+    case RESTART_VM:
+    case SHUT_DOWN_VM:
+        if (d->pending_power == action && time(NULL) <= d->power_deadline) {
+            struct json_object *data = NULL;
+            send_request(d, "power", action == RESTART_VM ?
+                "{\"operation\":\"reboot\",\"confirm\":true}" :
+                "{\"operation\":\"poweroff\",\"confirm\":true}", &data);
+            if (data) json_object_put(data);
+            d->pending_power = NONE;
+        } else {
+            d->pending_power = action;
+            d->power_deadline = time(NULL) + 10;
+        }
+        break;
+    default: break;
+    }
+    if (d->page != previous_page) {
+        if (previous_page == NETWORK) explicit_bzero(d->wifi_password, sizeof d->wifi_password);
+        d->password_focus = false;
+        d->notice[0] = 0;
+        refresh_page(d);
+    }
+    redraw(d);
+}
+
+static void set_window_type(struct desktop *d, Window window, Atom type) {
+    XChangeProperty(d->display, window, d->type_atom, XA_ATOM, 32, PropModeReplace,
+                    (unsigned char *)&type, 1);
+}
+
+static bool setup_x(struct desktop *d) {
+    d->display = XOpenDisplay(NULL);
+    if (!d->display) return false;
+    d->screen = DefaultScreen(d->display);
+    d->visual = DefaultVisual(d->display, d->screen);
+    if (d->visual->class != TrueColor) return false;
+    d->width = DisplayWidth(d->display, d->screen);
+    d->height = DisplayHeight(d->display, d->screen);
+    int screen_width = d->width, screen_height = d->height;
+    if (d->settings_mode) {
+        if (d->power_mode) {
+            if (d->width > 620) d->width = 620;
+            if (d->height > 380) d->height = 380;
+        } else {
+            if (d->width > 1100) d->width = 1100;
+            int maximum_height = screen_height >= 900 ? 900 : 680;
+            if (maximum_height > screen_height - 120) maximum_height = screen_height - 120;
+            if (d->height > maximum_height) d->height = maximum_height;
+        }
+    }
+    d->dock_width = d->width - 48;
+    if (d->dock_width > 1040) d->dock_width = 1040;
+    d->dock_x = (d->width - d->dock_width) / 2;
+    d->dock_y = d->height - 84;
+    d->type_atom = XInternAtom(d->display, "_NET_WM_WINDOW_TYPE", False);
+    d->desktop_atom = XInternAtom(d->display, "_NET_WM_WINDOW_TYPE_DESKTOP", False);
+    d->dock_atom = XInternAtom(d->display, "_NET_WM_WINDOW_TYPE_DOCK", False);
+    d->strut_atom = XInternAtom(d->display, "_NET_WM_STRUT", False);
+    d->client_list_atom = XInternAtom(d->display, "_NET_CLIENT_LIST", False);
+    d->active_atom = XInternAtom(d->display, "_NET_ACTIVE_WINDOW", False);
+    Window root = RootWindow(d->display, d->screen);
+    d->background = XCreateSimpleWindow(d->display, root,
+                                         d->settings_mode ? (screen_width - d->width) / 2 : 0,
+                                         d->settings_mode ? (screen_height - d->height) / 2 : 0,
+                                         (unsigned)d->width, (unsigned)d->height,
+                                         0, 0, 0);
+    if (d->settings_mode) {
+        XSizeHints hints = {.flags = PPosition | PSize | PMinSize | PMaxSize,
+                            .x = (screen_width - d->width) / 2,
+                            .y = (screen_height - d->height) / 2,
+                            .width = d->width, .height = d->height,
+                            .min_width = d->width, .min_height = d->height,
+                            .max_width = d->width, .max_height = d->height};
+        XSetWMNormalHints(d->display, d->background, &hints);
+    }
+    d->dock = XCreateSimpleWindow(d->display, root, d->dock_x, d->dock_y,
+                                   (unsigned)d->dock_width, 68, 0, 0, 0);
+    XStoreName(d->display, d->background,
+               d->power_mode ? "Companion Power" :
+               d->settings_mode ? "Companion Settings" : "Companion desktop");
+    XStoreName(d->display, d->dock, "Companion dock");
+    if (!d->settings_mode) {
+        set_window_type(d, d->background, d->desktop_atom);
+        set_window_type(d, d->dock, d->dock_atom);
+    }
+    long strut[4] = {0, 0, 0, 84};
+    if (!d->settings_mode)
+        XChangeProperty(d->display, d->dock, d->strut_atom, XA_CARDINAL, 32,
+                        PropModeReplace, (unsigned char *)strut, 4);
+    XSelectInput(d->display, d->background, ExposureMask | ButtonPressMask | KeyPressMask);
+    XSelectInput(d->display, d->dock, ExposureMask | ButtonPressMask | KeyPressMask);
+    d->gc = XCreateGC(d->display, d->background, 0, NULL);
+    Colormap colormap = DefaultColormap(d->display, d->screen);
+    d->background_draw = XftDrawCreate(d->display, d->background, d->visual, colormap);
+    d->dock_draw = XftDrawCreate(d->display, d->dock, d->visual, colormap);
+    d->font_small = XftFontOpenName(d->display, d->screen, "DejaVu Sans:size=12");
+    d->font_body = XftFontOpenName(d->display, d->screen, "DejaVu Sans:size=15");
+    d->font_large = XftFontOpenName(d->display, d->screen, "DejaVu Sans:bold:size=34");
+    if (!d->background_draw || !d->dock_draw || !d->font_small || !d->font_body ||
+        !d->font_large) return false;
+    XMapWindow(d->display, d->background);
+    if (!d->settings_mode) XMapRaised(d->display, d->dock);
+    XSync(d->display, False);
+    if (!d->settings_mode && !strcmp(DisplayString(d->display), ":0")) {
+        XWarpPointer(d->display, None, root, 0, 0, 0, 0, 48, 48);
+        XSync(d->display, False);
+    }
+    return true;
+}
+
+static int show_home(void) {
+    Display *display = XOpenDisplay(NULL);
+    if (!display) return 1;
+    int screen = DefaultScreen(display);
+    Atom list = XInternAtom(display, "_NET_CLIENT_LIST", False);
+    Atom type_atom = XInternAtom(display, "_NET_WM_WINDOW_TYPE", False);
+    Atom desktop_atom = XInternAtom(display, "_NET_WM_WINDOW_TYPE_DESKTOP", False);
+    Atom dock_atom = XInternAtom(display, "_NET_WM_WINDOW_TYPE_DOCK", False);
+    Atom actual;
+    int format;
+    unsigned long count, remaining;
+    unsigned char *clients = NULL;
+    if (XGetWindowProperty(display, RootWindow(display, screen), list, 0, 256, False,
+                           XA_WINDOW, &actual, &format, &count, &remaining, &clients) == Success &&
+        actual == XA_WINDOW && format == 32) {
+        for (unsigned long i = 0; i < count; i++) {
+            Window window = ((Window *)clients)[i];
+            unsigned char *types = NULL;
+            Atom found;
+            int bits;
+            unsigned long number, rest;
+            bool shell = false;
+            if (XGetWindowProperty(display, window, type_atom, 0, 16, False, XA_ATOM,
+                                   &found, &bits, &number, &rest, &types) == Success &&
+                found == XA_ATOM && bits == 32) {
+                for (unsigned long j = 0; j < number; j++)
+                    if (((Atom *)types)[j] == desktop_atom || ((Atom *)types)[j] == dock_atom)
+                        shell = true;
+            }
+            if (types) XFree(types);
+            if (!shell) XIconifyWindow(display, window, screen);
+        }
+    }
+    if (clients) XFree(clients);
+    XCloseDisplay(display);
+    return 0;
+}
+
+int main(int argc, char **argv) {
+    setlocale(LC_ALL, "");
+    if (argc == 2 && !strcmp(argv[1], "--version")) {
+        puts("Companion desktop 0.1 (C/X11/Xft)"); return 0;
+    }
+    if (argc == 2 && !strcmp(argv[1], "--home")) return show_home();
+    struct desktop d = {.page = WORKSPACE, .control_socket = DEFAULT_SOCKET,
+                        .published_page = -1, .bios_choice = -1};
+    if (argc == 2 && !strcmp(argv[1], "--settings")) {
+        d.settings_mode = true;
+        d.page = SETTINGS;
+    } else if (argc == 2 && !strcmp(argv[1], "--power")) {
+        d.settings_mode = true;
+        d.power_mode = true;
+        d.page = MENU;
+    } else if (argc == 3 && !strcmp(argv[1], "--socket")) d.control_socket = argv[2];
+    else if (argc != 1) return fprintf(stderr, "usage: companion-desktop [--settings|--power|--socket path]\n"), 2;
+    signal(SIGCHLD, SIG_IGN);
+    if (!setup_x(&d)) return fprintf(stderr, "companion-desktop: X display unavailable\n"), 1;
+    refresh_status(&d);
+    refresh_page(&d);
+    refresh_tasks(&d);
+    if (!d.settings_mode) ensure_visible(&d);
+    redraw(&d);
+    XSync(d.display, False);
+    if (!d.settings_mode) publish_health(&d);
+    time_t last_network_refresh = 0;
+    for (;;) {
+        while (XPending(d.display)) {
+            XEvent event;
+            XNextEvent(d.display, &event);
+            if (event.type == Expose && !event.xexpose.count) redraw(&d);
+            else if (event.type == ButtonPress) {
+                for (int i = d.hit_count - 1; i >= 0; i--) {
+                    struct hit *item = &d.hits[i];
+                    if (item->window == event.xbutton.window && event.xbutton.x >= item->x &&
+                        event.xbutton.y >= item->y && event.xbutton.x < item->x + item->width &&
+                        event.xbutton.y < item->y + item->height) {
+                        run_action(&d, item->action, item->index); break;
+                    }
+                }
+            } else if (event.type == KeyPress) {
+                KeySym key = XLookupKeysym(&event.xkey, 0);
+                if (d.page == NETWORK && d.password_focus) {
+                    size_t length = strlen(d.wifi_password);
+                    if (key == XK_Return || key == XK_KP_Enter) run_action(&d, WIFI_CONNECT, 0);
+                    else if (key == XK_Escape) { d.password_focus = false; redraw(&d); }
+                    else if (key == XK_BackSpace && length) {
+                        do { length--; } while (length &&
+                            ((unsigned char)d.wifi_password[length] & 0xc0) == 0x80);
+                        d.wifi_password[length] = 0;
+                        redraw(&d);
+                    } else {
+                        char typed[32];
+                        KeySym converted;
+                        int count = XLookupString(&event.xkey, typed, sizeof typed, &converted, NULL);
+                        bool valid = count > 0 && length + (size_t)count < sizeof d.wifi_password;
+                        for (int i = 0; valid && i < count; i++)
+                            if ((unsigned char)typed[i] < 32 || (unsigned char)typed[i] == 127)
+                                valid = false;
+                        if (valid) {
+                            memcpy(d.wifi_password + length, typed, (size_t)count);
+                            d.wifi_password[length + (size_t)count] = 0;
+                            redraw(&d);
+                        }
+                    }
+                    continue;
+                }
+                enum action action = key == XK_F1 ? SHOW_OVERVIEW :
+                                     key == XK_F2 ? SHOW_SETTINGS :
+                                     key == XK_F3 ? SHOW_DEVICE :
+                                     key == XK_F4 || key == XK_Escape ?
+                                         d.power_mode ? SHOW_WORKSPACE :
+                                         (d.settings_mode ? SHOW_MENU : SHOW_WORKSPACE) : NONE;
+                if (action != NONE) run_action(&d, action, 0);
+            }
+        }
+        struct pollfd input = {.fd = ConnectionNumber(d.display), .events = POLLIN};
+        int ready = poll(&input, 1, 1000);
+        if (ready < 0 && errno != EINTR) break;
+        refresh_status(&d);
+        time_t now = time(NULL);
+        if (d.page == NETWORK && now - last_network_refresh >= 3) {
+            refresh_page(&d);
+            last_network_refresh = now;
+        }
+        refresh_tasks(&d);
+        if (!d.settings_mode) ensure_visible(&d);
+        redraw(&d);
+        XSync(d.display, False);
+        if (!d.settings_mode) publish_health(&d);
+    }
+    XCloseDisplay(d.display);
+    return 1;
+}

@@ -1,0 +1,10 @@
+#!/sbin/openrc-run
+description="Commit a healthy Companion boot to the EFI recovery journal"
+depend() {
+    need localmount companion companion-watch
+}
+start() {
+    ebegin "Confirming Companion boot health"
+    /etc/companion/bin/companion-boot-health
+    eend $?
+}

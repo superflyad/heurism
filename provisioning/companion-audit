@@ -1,0 +1,28 @@
+#!/bin/sh
+set -eu
+mkdir -p /var/lib/companion
+report=/var/lib/companion/audit.txt
+{
+    echo 'Companion hardware audit (read-only observations)'
+    date -u
+    uname -a
+    for field in sys_vendor product_name product_version board_vendor board_name bios_vendor bios_version bios_date; do
+        file="/sys/class/dmi/id/$field"
+        [ ! -r "$file" ] || printf '%s: %s\n' "$field" "$(cat "$file")"
+    done
+    echo; echo 'CPU'; cat /proc/cpuinfo
+    echo; echo 'Memory'; cat /proc/meminfo
+    echo; echo 'PCI'; lspci -nnk || true
+    echo; echo 'USB'; lsusb || true
+    echo; echo 'Block devices'; lsblk -o NAME,PATH,SIZE,MODEL,TRAN,TYPE,FSTYPE,MOUNTPOINTS
+    echo; echo 'UEFI boot entries (read only)'; efibootmgr -v || true
+    echo; echo 'Firmware SecureBoot value (four attribute bytes then value byte)'
+    for variable in /sys/firmware/efi/efivars/SecureBoot-*; do
+        [ ! -r "$variable" ] || od -An -tx1 "$variable"
+    done
+    echo 'Intel Boot Guard: UNKNOWN. Not inferred from Secure Boot or root access.'
+    echo 'Firmware replacement support: NOT ESTABLISHED for this board.'
+    echo; echo 'ACPI table inventory'; ls -l /sys/firmware/acpi/tables 2>/dev/null || true
+    echo; echo 'Kernel messages'; dmesg
+} > "$report" 2>&1
+echo "Hardware report: $report"

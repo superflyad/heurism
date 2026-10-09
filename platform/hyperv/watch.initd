@@ -1,0 +1,11 @@
+#!/sbin/openrc-run
+description="Independent Companion VM management health"
+supervisor=supervise-daemon
+command=/usr/local/sbin/companion-vm-watch
+respawn_delay=3
+respawn_max=0
+output_log=/var/log/companion-watch.log
+error_log=/var/log/companion-watch.log
+depend() {
+    need localmount networking sshd
+}

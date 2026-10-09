@@ -1,0 +1,14 @@
+#!/sbin/openrc-run
+description="Companion local hardware control service"
+supervisor=supervise-daemon
+command=/usr/bin/python3
+command_args="/opt/companion/desktop/control.py"
+respawn_delay=3
+respawn_max=5
+respawn_period=60
+output_log=/var/log/companion-control.log
+error_log=/var/log/companion-control.log
+depend() {
+    need localmount
+    after companion companion-watch companion-boot-health
+}

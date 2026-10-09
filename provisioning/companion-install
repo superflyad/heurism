@@ -1,0 +1,90 @@
+#!/bin/sh
+set -eu
+usage() {
+    echo 'Companion persistent management installation (Alpine Linux base)'
+    echo 'Installs root SSH access, hardware tools and Companion management commands.'
+    echo 'Does not install a native Companion kernel or replace motherboard firmware.'
+    echo
+    lsblk -d -o NAME,PATH,SIZE,MODEL,TRAN,TYPE
+    echo
+    echo 'Preview: companion-install /dev/nvme0n1'
+    echo 'Erase/install: companion-install /dev/nvme0n1 --erase /dev/nvme0n1'
+    echo 'The second form irreversibly erases the entire explicitly selected disk.'
+}
+if [ "$#" -eq 0 ]; then usage; exit 0; fi
+disk=$1
+case "$disk" in /dev/nvme*n*|/dev/sd*|/dev/vd*) ;; *) echo 'Unsupported disk path.' >&2; exit 1;; esac
+[ -b "$disk" ] || { echo 'Not a block device.' >&2; exit 1; }
+[ "$(lsblk -dn -o TYPE "$disk")" = disk ] || { echo 'Select a whole disk, not a partition.' >&2; exit 1; }
+[ "$(lsblk -dn -o TRAN "$disk")" != usb ] || { echo 'Refusing to install to a USB disk.' >&2; exit 1; }
+if lsblk -nr -o MOUNTPOINTS "$disk" | grep -q '[^[:space:]]'; then
+    echo 'Refusing to erase a disk with mounted filesystems (including the boot USB).' >&2
+    exit 1
+fi
+echo "Selected target: $disk"
+lsblk -o NAME,SIZE,MODEL,TRAN,TYPE,FSTYPE,MOUNTPOINTS "$disk"
+if [ "$#" -ne 3 ] || [ "$2" != --erase ] || [ "$3" != "$disk" ]; then
+    echo 'Preview only. Nothing changed. Re-run with the exact erase arguments to install.'
+    exit 0
+fi
+[ -d /sys/firmware/efi ] || { echo 'This installer requires UEFI boot.' >&2; exit 1; }
+command -v setup-disk >/dev/null
+companion-audit
+echo "ERASING $disk and installing the persistent Companion management environment."
+# setup-disk carries current /etc and lbu-included files onto the new root.
+# This does not invoke a BIOS flash utility.
+USE_EFI=1 BOOTLOADER=grub ERASE_DISKS="$disk" ROOTFS=ext4 KERNELOPTS='console=tty1' setup-disk -m sys -s 0 "$disk"
+# Make the management identity and startup service explicit on the new root.
+# Do not depend on distribution backup filters to preserve these files.
+root_partition=$(lsblk -nrpo NAME,FSTYPE "$disk" | awk '$2 == "ext4" {print $1; exit}')
+case "$root_partition" in "$disk"*) ;; *) echo 'Installed root partition could not be identified.' >&2; exit 1;; esac
+[ -n "$root_partition" ] || exit 1
+installed=/mnt/companion-installed
+mkdir -p "$installed"
+mount "$root_partition" "$installed"
+trap 'umount "$installed" 2>/dev/null || true' EXIT INT TERM
+mkdir -p "$installed/etc/companion" "$installed/etc/init.d" "$installed/etc/runlevels/default" \
+    "$installed/etc/ssh" "$installed/root/.ssh" "$installed/etc/network"
+cp -a /etc/companion/. "$installed/etc/companion/"
+cp /etc/init.d/companion "$installed/etc/init.d/companion"
+chmod 755 "$installed/etc/init.d/companion"
+ln -sf /etc/init.d/companion "$installed/etc/runlevels/default/companion"
+cp /etc/init.d/companion-watch "$installed/etc/init.d/companion-watch"
+chmod 755 "$installed/etc/init.d/companion-watch"
+ln -sf /etc/init.d/companion-watch "$installed/etc/runlevels/default/companion-watch"
+ln -sf /etc/init.d/sshd "$installed/etc/runlevels/default/sshd"
+for service in companion-boot-health companion-recovery-deadline companion-welcome; do
+    if [ -f "/etc/init.d/$service" ]; then
+        cp "/etc/init.d/$service" "$installed/etc/init.d/$service"
+        chmod 755 "$installed/etc/init.d/$service"
+        runlevel=default
+        [ "$service" != companion-recovery-deadline ] || runlevel=boot
+        ln -sf "/etc/init.d/$service" "$installed/etc/runlevels/$runlevel/$service"
+    fi
+done
+# Also correct old live images before their inittab is carried onto the disk.
+sed -i '/^tty0::respawn:/d' "$installed/etc/inittab"
+cp /etc/ssh/sshd_config /etc/ssh/ssh_host_ed25519_key /etc/ssh/ssh_host_ed25519_key.pub "$installed/etc/ssh/"
+cp /root/.ssh/authorized_keys "$installed/root/.ssh/authorized_keys"
+chmod 700 "$installed/root/.ssh"
+chmod 600 "$installed/root/.ssh/authorized_keys" "$installed/etc/ssh/ssh_host_ed25519_key"
+cp /etc/network/interfaces "$installed/etc/network/interfaces"
+printf '%s\n' 'https://dl-cdn.alpinelinux.org/alpine/v3.24/main' \
+    'https://dl-cdn.alpinelinux.org/alpine/v3.24/community' > "$installed/etc/apk/repositories"
+chroot "$installed" passwd -d root
+sync
+umount "$installed"
+trap - EXIT INT TERM
+mkdir -p /sys/firmware/efi/efivars
+if ! mountpoint -q /sys/firmware/efi/efivars; then
+    mount -t efivarfs efivarfs /sys/firmware/efi/efivars || true
+fi
+efibootmgr -v > /var/lib/companion/boot-before.txt 2>&1 || true
+if efibootmgr -c -d "$disk" -p 1 -L 'Companion Management' -l '\EFI\alpine\grubx64.efi'; then
+    echo 'Registered Companion Management as the preferred UEFI startup entry.'
+else
+    echo 'Firmware did not accept the boot entry. Use its UEFI drive fallback or add the EFI file in F2.'
+fi
+sync
+echo 'Installation completed. Remove the USB before rebooting.'
+echo 'Keep Secure Boot disabled for this unsigned development installation.'

@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+Name=Companion Terminal
+Comment=Companion C terminal and shell
+Exec=/opt/companion/native/current/companion-terminal
+Icon=utilities-terminal
+Terminal=false
+Categories=System;TerminalEmulator;
