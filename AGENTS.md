@@ -11,7 +11,8 @@ pinned image under `HeurismExtensionImage01`, retains the old
 verified Heurism variable. The payload ABI and volatile marker still use the
 legacy name. Do not activate the physical EFI change while no local power-button
 recovery is available; SSH cannot recover a preboot hang. See
-`docs/heurism-nv-migration.md`.
+`docs/heurism-nv-migration.md`. The staged `stage-variable.sh` passed a
+read-only physical preflight; its `create` action has not run.
 
 The owner renamed the OS product to **Heurism** and asked for a deep C runtime
 migration. Active VM and Dell releases use `/opt/heurism/native/current`,

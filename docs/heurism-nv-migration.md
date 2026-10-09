@@ -38,7 +38,10 @@ the six-file protected manifest passes. The new variable does not exist on
 the Dell. A copy of the candidate binary is staged at
 `/var/lib/companion/firmware/heurism-nv-candidate/dual-name.efi` in a mode
 0700 root-owned directory, with the file mode 0600. It is not on the EFI
-partition and is not selected for boot.
+partition and is not selected for boot. The guarded variable-stage script
+`tools/target/heurism-nv-stage.sh` is staged beside it as `stage-variable.sh`.
+Its shell syntax and read-only `check` action passed on the live Dell. Its
+`create` action has not been run.
 
 ## Physical activation gate
 
@@ -52,10 +55,24 @@ power-button recovery would not be available.
 The guarded rollout sequence is: recheck board identity, current boot health,
 EFI file hashes, exact boot/driver order and variable-store capacity; retain
 the legacy variable and active SSD driver; create the Heurism variable with
-the same pinned payload and verify its attributes and readback; boot once
+the same pinned payload in a single efivarfs write, then verify its attributes
+and readback; boot once
 with the old driver; then install the tested dual-name driver with a backup
 and updated six-file protected manifest. On the next normal boot, require
 marker path 3, fresh boot ID, SSH/watch/control/Xfce health, unchanged loader
 and kernel hashes, and the verified SSD boot order. Retain the legacy variable
 until multiple good physical boots and a recovery test. Do not select a NIC
 BootNext entry or remove the legacy variable as part of initial activation.
+Linux's [efivarfs documentation](https://docs.kernel.org/filesystems/efivarfs.html)
+explains the four-byte attribute prefix and warns that deleting nonstandard
+variables can expose firmware bugs. The kernel's
+[EFI variable example](https://docs.kernel.org/5.4/admin-guide/acpi/ssdt-overlays.html)
+also specifies a single write for the complete variable. The rollout must
+follow those interfaces and must not use a multi-write copy to create the new
+variable.
+
+The stage script copies the verified 2,052-byte legacy efivarfs file to a
+root-only regular file, then uses one `dd` block of that exact size to create
+the new name. It verifies both variables byte for byte afterward and never
+deletes or overwrites either variable. A creation error stops the rollout for
+inspection; it must not be followed automatically by EFI driver activation.
