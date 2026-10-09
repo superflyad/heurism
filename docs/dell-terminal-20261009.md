@@ -46,6 +46,10 @@ not restore access in this attempt and never established wake from full
 poweroff or a firmware halt. The existing SSD rescue and root management paths
 were not deliberately changed. The next trustworthy check requires local
 power/display observation or the Dell returning to its pinned SSH identity.
+The remote helper now rejects known power commands unless an operator explicitly
+asserts local physical recovery is available. This guard prevents the same
+unattended command path from being used accidentally; it cannot parse every
+possible shell script or provide an independent reset channel.
 
 ## Continued VM work
 

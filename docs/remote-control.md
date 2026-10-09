@@ -16,6 +16,12 @@ client key, root UID and target hostname before using a discovered address. It
 stores the new address and boot ID under `artifacts/targets/dell.json`. Remote
 commands execute once: the tool does not automatically retry a command that may
 already have changed the system. `--timeout` sets the command's execution limit.
+Known power commands are blocked by default. After the 2026-10-09 checked reboot
+did not return to SSH, they require `--local-recovery-ready`, which asserts that
+someone can inspect the Dell and restore it physically. This is an operator
+guard, not a shell security boundary; scripts and indirect commands still need
+review. Do not use that flag for an unattended closed-lid reboot. See the
+[terminal update and reboot record](dell-terminal-20261009.md).
 The installed hostname is `heurism-dell`; the helper also recognizes the old
 hostname during rollback, but still requires the same pinned SSH host key and
 authorized root key.

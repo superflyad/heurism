@@ -1,5 +1,17 @@
-"""Reject the known unsafe physical Dell PXE boot selection in our SSH helper."""
+"""Operator-error guards for physical Dell commands; not a shell sandbox."""
 import re
+
+def validate_remote_power(command, local_recovery_ready=False):
+    """Require a local recovery assertion for a remote Dell power operation."""
+    power = re.search(
+        r'\b(?:reboot|poweroff|shutdown|halt)\b|'
+        r'\b(?:heurismctl|companionctl)\s+power(?=\s|$|[;&|])|'
+        r'\b(?:heurism|companion)-next-boot\b[^\n;&|]*--reboot\b',
+        command, re.I)
+    if power and not local_recovery_ready:
+        raise ValueError('Remote Dell power action blocked: an earlier checked reboot '
+                         'did not return to SSH. Use --local-recovery-ready only while '
+                         'a person can inspect the Dell and restore it physically.')
 
 def validate_command(command):
     if not re.search(r'\befibootmgr\b', command):

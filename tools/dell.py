@@ -13,7 +13,7 @@ import socket
 import subprocess
 import sys
 import time
-from boot_safety import validate_command
+from boot_safety import validate_command, validate_remote_power
 
 repo = Path(__file__).resolve().parents[1]
 identity = repo / 'artifacts' / 'ssh'
@@ -23,11 +23,14 @@ parser.add_argument('--address', help='Try this address first')
 parser.add_argument('--wait', type=int, default=0, help='Seconds to wait for trusted access')
 parser.add_argument('--timeout', type=int, default=30, help='Command execution timeout')
 parser.add_argument('--command', default='heurismctl status')
+parser.add_argument('--local-recovery-ready', action='store_true',
+                    help='Permit remote power only with a person able to inspect and recover the Dell locally')
 parser.add_argument('--wake', action='store_true', help='Send a local Wake-on-LAN packet (firmware support required)')
 parser.add_argument('--after-boot', help='Wait for a boot ID different from this value')
 args = parser.parse_args()
 try:
     validate_command(args.command)
+    validate_remote_power(args.command, args.local_recovery_ready)
 except ValueError as error:
     parser.error(str(error))
 state = json.loads(statefile.read_text()) if statefile.exists() else {}
