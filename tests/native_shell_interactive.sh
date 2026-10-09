@@ -14,4 +14,11 @@ printf 'printf y > %s\033[Dl\r\004' "$directory/fie" |
     timeout 15 script -q -e -c "$shell" "$directory/edit.log" >/dev/null
 test "$(cat "$directory/file")" = y
 
+{
+    awk 'BEGIN {for (i = 0; i < 8192; i++) printf "A"}'
+    printf '\rprintf recovered > %s\r\004' "$directory/after-overflow"
+} | timeout 15 script -q -e -c "$shell" "$directory/overflow.log" >/dev/null
+test "$(cat "$directory/after-overflow")" = recovered
+grep -q 'line exceeds 8192 bytes' "$directory/overflow.log"
+
 echo 'native interactive shell history and editing checks passed'

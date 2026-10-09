@@ -615,9 +615,12 @@ int main(int argc, char **argv) {
         }
         if (!input) break;
         size_t n = strlen(line);
-        if (n > MAX_LINE || (n && line[n - 1] != '\n' && !feof(stdin))) {
-            int ch;
-            while ((ch = getchar()) != '\n' && ch != EOF) {}
+        bool complete = n && line[n - 1] == '\n';
+        if (n > MAX_LINE || (n && !complete && !feof(stdin))) {
+            if (!interactive && !complete) {
+                int ch;
+                while ((ch = getchar()) != '\n' && ch != EOF) {}
+            }
             fprintf(stderr, "heurism-sh: line exceeds %d bytes\n", MAX_LINE);
             last_status = 2;
             continue;

@@ -2,6 +2,7 @@
 /* Compact X11/PTy terminal. libvterm owns VT parsing; Heurism owns the process and window. */
 #include <X11/Xlib.h>
 #include <X11/Xutil.h>
+#include <X11/Xatom.h>
 #include <X11/keysym.h>
 #include <X11/Xft/Xft.h>
 #include <vterm.h>
@@ -19,12 +20,17 @@
 #include <string.h>
 #include <sys/ioctl.h>
 #include <sys/wait.h>
+#include <time.h>
 #include <unistd.h>
 
 #define SHELL_PATH "/opt/heurism/native/current/heurism-sh"
 #define OUT_CAPACITY 65536
 #define MARGIN 12
 #define HISTORY_CAPACITY 512
+#define CLIP_CAPACITY (1024 * 1024)
+#define PASTE_CAPACITY 8192
+
+struct position { size_t row; int col; };
 
 struct history_line {
     VTermScreenCell *cells;
@@ -36,6 +42,7 @@ struct terminal {
     int screen_number;
     Window window;
     Atom wm_delete;
+    Atom clipboard, utf8, targets, paste_property;
     Visual *visual;
     GC gc;
     XftFont *font;
@@ -50,8 +57,42 @@ struct terminal {
     struct history_line history[HISTORY_CAPACITY];
     size_t history_head, history_count, view_offset;
     char title[96];
-    bool running;
+    char notice[64];
+    time_t notice_until, pending_until;
+    struct position selection_start, selection_end;
+    char *primary_text, *clipboard_text;
+    char *pending_text;
+    size_t primary_length, clipboard_length;
+    size_t pending_length;
+    bool selecting, owns_primary, owns_clipboard;
+    Atom pending_paste, pending_selection;
+    bool running, window_destroyed;
 };
+
+static int position_compare(struct position a, struct position b) {
+    if (a.row != b.row) return a.row < b.row ? -1 : 1;
+    return (a.col > b.col) - (a.col < b.col);
+}
+
+static bool selected_cell(struct terminal *t, size_t row, int col) {
+    if (position_compare(t->selection_start, t->selection_end) == 0) return false;
+    struct position first = t->selection_start, last = t->selection_end;
+    if (position_compare(first, last) > 0) {
+        struct position swap = first; first = last; last = swap;
+    }
+    struct position here = {row, col};
+    return position_compare(first, here) <= 0 && position_compare(here, last) <= 0;
+}
+
+static struct position pointer_position(struct terminal *t, int x, int y) {
+    int row = (y - MARGIN) / t->cell_height;
+    int col = (x - MARGIN) / t->cell_width;
+    if (y < MARGIN) row = 0;
+    if (x < MARGIN) col = 0;
+    if (row >= t->rows) row = t->rows - 1;
+    if (col >= t->cols) col = t->cols - 1;
+    return (struct position){t->history_count - t->view_offset + (size_t)row, col};
+}
 
 static struct history_line *history_at(struct terminal *t, size_t index) {
     return &t->history[(t->history_head + index) % HISTORY_CAPACITY];
@@ -119,7 +160,9 @@ static unsigned long pixel(struct terminal *t, VTermColor color) {
 static void redraw(struct terminal *t) {
     char title[sizeof t->title];
     const char *base = geteuid() == 0 ? "Heurism Administrator" : "Heurism C Terminal";
-    if (t->view_offset)
+    if (t->notice_until > time(NULL))
+        snprintf(title, sizeof title, "%s [%s]", base, t->notice);
+    else if (t->view_offset)
         snprintf(title, sizeof title, "%s [scrollback %zu/%zu]", base,
                  t->view_offset, t->history_count);
     else snprintf(title, sizeof title, "%s", base);
@@ -144,7 +187,12 @@ static void redraw(struct terminal *t) {
                        (VTermPos){live_row, col}, &cell)) continue;
             VTermColor foreground = cell.attrs.reverse ? cell.bg : cell.fg;
             VTermColor background = cell.attrs.reverse ? cell.fg : cell.bg;
-            if (!VTERM_COLOR_IS_DEFAULT_BG(&background) || cell.attrs.reverse) {
+            bool marked = selected_cell(t, index, col);
+            if (marked) {
+                foreground = (VTermColor){.rgb = {VTERM_COLOR_RGB, 255, 255, 255}};
+                background = (VTermColor){.rgb = {VTERM_COLOR_RGB, 42, 91, 130}};
+            }
+            if (marked || !VTERM_COLOR_IS_DEFAULT_BG(&background) || cell.attrs.reverse) {
                 XSetForeground(t->display, t->gc, pixel(t, background));
                 XFillRectangle(t->display, t->window, t->gc,
                                MARGIN + col * t->cell_width, MARGIN + row * t->cell_height,
@@ -222,6 +270,7 @@ static void resize_terminal(struct terminal *t, int width, int height) {
     if (cols > 300) cols = 300;
     if (rows > 120) rows = 120;
     if (cols != t->cols || rows != t->rows) {
+        t->selection_end = t->selection_start;
         t->cols = cols;
         t->rows = rows;
         vterm_set_size(t->vt, rows, cols);
@@ -251,6 +300,192 @@ static int decode_utf8(const unsigned char *s, int len, uint32_t *codepoint) {
         (count == 4 && value < 0x10000)) return -1;
     *codepoint = value;
     return count;
+}
+
+static bool selected_text(struct terminal *t, char **result, size_t *length) {
+    if (position_compare(t->selection_start, t->selection_end) == 0) return false;
+    struct position first = t->selection_start, last = t->selection_end;
+    if (position_compare(first, last) > 0) {
+        struct position swap = first; first = last; last = swap;
+    }
+    char *text = malloc(CLIP_CAPACITY + 1);
+    if (!text) return false;
+    size_t used = 0;
+    for (size_t row = first.row; row <= last.row; row++) {
+        size_t line_start = used;
+        int start = row == first.row ? first.col : 0;
+        int end = row == last.row ? last.col : t->cols - 1;
+        for (int col = start; col <= end; col++) {
+            VTermScreenCell cell = {0};
+            if (row < t->history_count) {
+                struct history_line *line = history_at(t, row);
+                if (col < line->cols) cell = line->cells[col];
+            } else {
+                vterm_screen_get_cell(t->screen,
+                    (VTermPos){(int)(row - t->history_count), col}, &cell);
+            }
+            if (cell.width == 0) continue;
+            if (!cell.chars[0]) cell.chars[0] = ' ';
+            for (int i = 0; i < VTERM_MAX_CHARS_PER_CELL && cell.chars[i]; i++) {
+                uint32_t cp = cell.chars[i];
+                unsigned char encoded[4];
+                int count;
+                if (cp < 0x80) encoded[0] = (unsigned char)cp, count = 1;
+                else if (cp < 0x800) {
+                    encoded[0] = (unsigned char)(0xc0 | (cp >> 6));
+                    encoded[1] = (unsigned char)(0x80 | (cp & 0x3f)); count = 2;
+                } else if (cp < 0x10000) {
+                    encoded[0] = (unsigned char)(0xe0 | (cp >> 12));
+                    encoded[1] = (unsigned char)(0x80 | ((cp >> 6) & 0x3f));
+                    encoded[2] = (unsigned char)(0x80 | (cp & 0x3f)); count = 3;
+                } else if (cp <= 0x10ffff) {
+                    encoded[0] = (unsigned char)(0xf0 | (cp >> 18));
+                    encoded[1] = (unsigned char)(0x80 | ((cp >> 12) & 0x3f));
+                    encoded[2] = (unsigned char)(0x80 | ((cp >> 6) & 0x3f));
+                    encoded[3] = (unsigned char)(0x80 | (cp & 0x3f)); count = 4;
+                } else continue;
+                if ((size_t)count > CLIP_CAPACITY - used) { free(text); return false; }
+                memcpy(text + used, encoded, (size_t)count);
+                used += (size_t)count;
+            }
+        }
+        while (used > line_start && text[used - 1] == ' ') used--;
+        if (row != last.row) {
+            if (used == CLIP_CAPACITY) { free(text); return false; }
+            text[used++] = '\n';
+        }
+    }
+    text[used] = 0;
+    *result = text;
+    *length = used;
+    return true;
+}
+
+static void take_primary(struct terminal *t, Time time) {
+    char *text;
+    size_t length;
+    if (!selected_text(t, &text, &length)) { XBell(t->display, 0); return; }
+    free(t->primary_text);
+    t->primary_text = text;
+    t->primary_length = length;
+    XSetSelectionOwner(t->display, XA_PRIMARY, t->window, time);
+    t->owns_primary = XGetSelectionOwner(t->display, XA_PRIMARY) == t->window;
+}
+
+static void take_clipboard(struct terminal *t, Time time) {
+    if (!t->primary_text) { XBell(t->display, 0); return; }
+    char *text = malloc(t->primary_length + 1);
+    if (!text) { XBell(t->display, 0); return; }
+    memcpy(text, t->primary_text, t->primary_length + 1);
+    free(t->clipboard_text);
+    t->clipboard_text = text;
+    t->clipboard_length = t->primary_length;
+    XSetSelectionOwner(t->display, t->clipboard, t->window, time);
+    t->owns_clipboard = XGetSelectionOwner(t->display, t->clipboard) == t->window;
+}
+
+static void selection_request(struct terminal *t, XSelectionRequestEvent *request) {
+    XSelectionEvent reply = {.type = SelectionNotify, .display = t->display,
+        .requestor = request->requestor, .selection = request->selection,
+        .target = request->target, .property = None, .time = request->time};
+    bool primary = request->selection == XA_PRIMARY;
+    bool owned = primary ? t->owns_primary :
+                 request->selection == t->clipboard && t->owns_clipboard;
+    const char *text = primary ? t->primary_text : t->clipboard_text;
+    size_t length = primary ? t->primary_length : t->clipboard_length;
+    Atom property = request->property == None ? request->target : request->property;
+    if (owned && text) {
+        if (request->target == t->targets) {
+            Atom supported[] = {t->targets, t->utf8};
+            XChangeProperty(t->display, request->requestor, property, XA_ATOM, 32,
+                            PropModeReplace, (unsigned char *)supported, 2);
+            reply.property = property;
+        } else if (request->target == t->utf8) {
+            XChangeProperty(t->display, request->requestor, property,
+                            request->target, 8, PropModeReplace,
+                            (const unsigned char *)text, (int)length);
+            reply.property = property;
+        }
+    }
+    XSendEvent(t->display, request->requestor, False, 0, (XEvent *)&reply);
+    XFlush(t->display);
+}
+
+static void request_paste(struct terminal *t, Atom selection, Time event_time) {
+    if (t->pending_text && t->pending_selection == selection &&
+        t->pending_until >= time(NULL)) {
+        if (t->outgoing_length <= OUT_CAPACITY - 32 &&
+            t->pending_length <= OUT_CAPACITY - 32 - t->outgoing_length) {
+            vterm_keyboard_start_paste(t->vt);
+            terminal_output(t->pending_text, t->pending_length, t);
+            vterm_keyboard_end_paste(t->vt);
+            t->notice_until = 0;
+        } else {
+            XBell(t->display, 0);
+            t->notice_until = time(NULL) + 5;
+            snprintf(t->notice, sizeof t->notice, "paste rejected: input queue full");
+        }
+        free(t->pending_text);
+        t->pending_text = NULL;
+        redraw(t);
+        return;
+    }
+    free(t->pending_text);
+    t->pending_text = NULL;
+    if (t->pending_paste != None) return;
+    t->pending_paste = selection;
+    XConvertSelection(t->display, selection, t->utf8, t->paste_property,
+                      t->window, event_time);
+}
+
+static void selection_notify(struct terminal *t, XSelectionEvent *event) {
+    if (event->selection != t->pending_paste) return;
+    t->pending_paste = None;
+    if (event->property == None) { XBell(t->display, 0); return; }
+    Atom type;
+    int format;
+    unsigned long count, remaining;
+    unsigned char *data = NULL;
+    int result = XGetWindowProperty(t->display, t->window, t->paste_property,
+                                    0, (PASTE_CAPACITY + 3) / 4, True, AnyPropertyType,
+                                    &type, &format, &count, &remaining, &data);
+    bool valid = result == Success && data && type == t->utf8 && format == 8 &&
+                 count && count <= PASTE_CAPACITY && !remaining &&
+                 t->outgoing_length <= OUT_CAPACITY - 32 &&
+                 count <= OUT_CAPACITY - 32 - t->outgoing_length;
+    if (valid) {
+        for (unsigned long i = 0; i < count; i++) {
+            unsigned char byte = data[i];
+            if (!byte || byte == 27 || byte == 127 ||
+                (byte < 32 && byte != '\t' && byte != '\n' && byte != '\r')) {
+                valid = false; break;
+            }
+        }
+    }
+    if (valid && (memchr(data, '\n', count) || memchr(data, '\r', count))) {
+        t->pending_text = malloc(count);
+        if (t->pending_text) {
+            memcpy(t->pending_text, data, count);
+            t->pending_length = count;
+            t->pending_selection = event->selection;
+            t->pending_until = time(NULL) + 10;
+            t->notice_until = t->pending_until;
+            snprintf(t->notice, sizeof t->notice, "multiline paste: repeat within 10s");
+            redraw(t);
+        } else valid = false;
+    } else if (valid) {
+        vterm_keyboard_start_paste(t->vt);
+        terminal_output((const char *)data, (size_t)count, t);
+        vterm_keyboard_end_paste(t->vt);
+    }
+    if (!valid) {
+        XBell(t->display, 0);
+        t->notice_until = time(NULL) + 5;
+        snprintf(t->notice, sizeof t->notice, "paste rejected: size or control bytes");
+        redraw(t);
+    }
+    if (data) XFree(data);
+    XDeleteProperty(t->display, t->window, t->paste_property);
 }
 
 static VTermKey special_key(KeySym key) {
@@ -304,6 +539,20 @@ static void keypress(struct terminal *t, XKeyEvent *event, XIC input_context) {
         scroll_view(t, 1 - t->rows);
         return;
     }
+    if ((event->state & (ControlMask | ShiftMask)) == (ControlMask | ShiftMask) &&
+        (symbol == XK_c || symbol == XK_C)) {
+        take_clipboard(t, event->time);
+        return;
+    }
+    if ((event->state & (ControlMask | ShiftMask)) == (ControlMask | ShiftMask) &&
+        (symbol == XK_v || symbol == XK_V)) {
+        request_paste(t, t->clipboard, event->time);
+        return;
+    }
+    if ((event->state & ShiftMask) && symbol == XK_Insert) {
+        request_paste(t, XA_PRIMARY, event->time);
+        return;
+    }
     if (t->view_offset) { t->view_offset = 0; redraw(t); }
     VTermModifier modifier = VTERM_MOD_NONE;
     if (event->state & ShiftMask) modifier |= VTERM_MOD_SHIFT;
@@ -326,6 +575,21 @@ static void keypress(struct terminal *t, XKeyEvent *event, XIC input_context) {
         }
     }
     flush_outgoing(t);
+}
+
+static void stop_child(pid_t child) {
+    if (child <= 0) return;
+    const int signals[] = {SIGHUP, SIGTERM, SIGKILL};
+    for (size_t step = 0; step < sizeof signals / sizeof signals[0]; step++) {
+        kill(-child, signals[step]);
+        kill(child, signals[step]);
+        for (int attempt = 0; attempt < 10; attempt++) {
+            pid_t result = waitpid(child, NULL, WNOHANG);
+            if (result == child || (result < 0 && errno == ECHILD)) return;
+            poll(NULL, 0, 100);
+        }
+    }
+    waitpid(child, NULL, 0);
 }
 
 int main(int argc, char **argv) {
@@ -371,9 +635,14 @@ int main(int argc, char **argv) {
     XClassHint hint = {.res_name = "heurism-terminal", .res_class = "HeurismTerminal"};
     XSetClassHint(t.display, t.window, &hint);
     t.wm_delete = XInternAtom(t.display, "WM_DELETE_WINDOW", False);
+    t.clipboard = XInternAtom(t.display, "CLIPBOARD", False);
+    t.utf8 = XInternAtom(t.display, "UTF8_STRING", False);
+    t.targets = XInternAtom(t.display, "TARGETS", False);
+    t.paste_property = XInternAtom(t.display, "HEURISM_PASTE", False);
     XSetWMProtocols(t.display, t.window, &t.wm_delete, 1);
     XSelectInput(t.display, t.window, ExposureMask | StructureNotifyMask |
-                 KeyPressMask | ButtonPressMask | FocusChangeMask);
+                 KeyPressMask | ButtonPressMask | ButtonReleaseMask |
+                 Button1MotionMask | FocusChangeMask);
     t.gc = XCreateGC(t.display, t.window, 0, NULL);
     t.draw = XftDrawCreate(t.display, t.window, t.visual,
                            DefaultColormap(t.display, t.screen_number));
@@ -387,6 +656,8 @@ int main(int argc, char **argv) {
     t.child = forkpty(&t.master, NULL, NULL, &size);
     if (t.child < 0) return perror("forkpty"), 1;
     if (t.child == 0) {
+        signal(SIGHUP, SIG_DFL);
+        signal(SIGQUIT, SIG_DFL);
         struct passwd *account = getpwuid(getuid());
         if (!account || !account->pw_dir || chdir(account->pw_dir) < 0) {
             perror("terminal home directory");
@@ -413,21 +684,54 @@ int main(int argc, char **argv) {
                 scroll_view(&t, 3);
             else if (event.type == ButtonPress && event.xbutton.button == Button5)
                 scroll_view(&t, -3);
+            else if (event.type == ButtonPress && event.xbutton.button == Button1) {
+                t.selection_start = t.selection_end = pointer_position(&t,
+                    event.xbutton.x, event.xbutton.y);
+                t.selecting = true;
+                redraw(&t);
+            } else if (event.type == MotionNotify && t.selecting) {
+                t.selection_end = pointer_position(&t, event.xmotion.x, event.xmotion.y);
+                redraw(&t);
+            } else if (event.type == ButtonRelease && event.xbutton.button == Button1 &&
+                       t.selecting) {
+                t.selecting = false;
+                t.selection_end = pointer_position(&t, event.xbutton.x, event.xbutton.y);
+                if (position_compare(t.selection_start, t.selection_end))
+                    take_primary(&t, event.xbutton.time);
+                redraw(&t);
+            } else if (event.type == ButtonPress && event.xbutton.button == Button2)
+                request_paste(&t, XA_PRIMARY, event.xbutton.time);
+            else if (event.type == SelectionRequest) selection_request(&t, &event.xselectionrequest);
+            else if (event.type == SelectionNotify) selection_notify(&t, &event.xselection);
+            else if (event.type == SelectionClear) {
+                if (event.xselectionclear.selection == XA_PRIMARY) t.owns_primary = false;
+                if (event.xselectionclear.selection == t.clipboard) t.owns_clipboard = false;
+            }
             else if (event.type == FocusIn && xic) XSetICFocus(xic);
             else if (event.type == FocusOut && xic) XUnsetICFocus(xic);
             else if (event.type == ClientMessage &&
                      (Atom)event.xclient.data.l[0] == t.wm_delete) t.running = false;
+            else if (event.type == DestroyNotify &&
+                     event.xdestroywindow.window == t.window) {
+                t.window_destroyed = true;
+                t.running = false;
+            }
         }
         struct pollfd fds[2] = {{.fd = ConnectionNumber(t.display), .events = POLLIN},
                                 {.fd = t.master, .events = POLLIN |
                                  (t.outgoing_length ? POLLOUT : 0)}};
         int ready = poll(fds, 2, 100);
+        if (t.notice_until && t.notice_until <= time(NULL)) {
+            t.notice_until = 0;
+            redraw(&t);
+        }
         if (ready < 0 && errno != EINTR) { perror("poll"); break; }
         if (fds[1].revents & POLLOUT) flush_outgoing(&t);
         if (fds[1].revents & (POLLIN | POLLHUP)) {
             char bytes[8192];
             ssize_t n = read(t.master, bytes, sizeof bytes);
             if (n > 0) {
+                t.selection_end = t.selection_start;
                 vterm_input_write(t.vt, bytes, (size_t)n);
                 vterm_screen_flush_damage(t.screen);
                 redraw(&t);
@@ -439,18 +743,18 @@ int main(int argc, char **argv) {
             t.running = false;
         }
     }
-    if (t.child > 0) {
-        kill(-t.child, SIGHUP);
-        waitpid(t.child, NULL, 0);
-    }
+    stop_child(t.child);
     if (xic) XDestroyIC(xic);
     if (xim) XCloseIM(xim);
-    XftDrawDestroy(t.draw);
+    if (!t.window_destroyed) XftDrawDestroy(t.draw);
     XftFontClose(t.display, t.font);
     XFreeGC(t.display, t.gc);
-    XDestroyWindow(t.display, t.window);
+    if (!t.window_destroyed) XDestroyWindow(t.display, t.window);
     XCloseDisplay(t.display);
     history_clear(&t);
+    free(t.primary_text);
+    free(t.clipboard_text);
+    free(t.pending_text);
     vterm_free(t.vt);
     close(t.master);
     return 0;

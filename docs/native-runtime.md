@@ -188,9 +188,10 @@ claims Dell Wi-Fi, speakers, touchpad or BIOS hardware. The Dell's existing
 SSD boot/recovery and independent root management remain untouched. The shell
 is not a full POSIX script shell; BusyBox ash still runs startup scripts. A
 local C terminal candidate has bounded scrollback and passed real X11
-keyboard/wheel, long-output and resize checks in the isolated image VM. It is
-not yet active on the existing VM or Dell. The terminal still needs text
-selection, clipboard and accessibility work. Browser and Onboard are external
+keyboard/wheel, long-output and resize checks in the isolated image VM. The
+current development VM also has [text selection and clipboard](terminal-clipboard.md)
+with live PTY evidence. The Dell ran the earlier scrollback release before an
+unverified reboot; accessibility remains open. Browser and Onboard are external
 Unix applications. Companion remains a C userspace on Linux, with the Dell
 release active under the checks above. See [security.md](security.md) for the
 current threat model and remaining security work.

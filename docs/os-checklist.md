@@ -24,9 +24,10 @@ test result and rollback path. See the [architecture](architecture.md),
   exist. Bounded scrollback passed a live Dell session before a checked reboot,
   but [post-reboot Dell health is unverified](dell-terminal-20261009.md).
   The later scrollback title cue is VM only.
+  [Selection, clipboard and clean close](terminal-clipboard.md) are also VM only.
 - [x] A fresh C-first VM image booted, painted the desktop, passed fallback and
-  checked power tests. The physical Dell still uses its guarded installed
-  release and existing SSD boot path.
+  checked power tests. The Dell's last known release used its guarded installer
+  and existing SSD boot path; its present boot state remains unverified.
 - [x] The owner reports that Dell touch and speakers work. Detailed gestures,
   microphone behavior and audio quality have not been accepted by hand.
 
@@ -39,9 +40,10 @@ Use the [Dell daily-use pass](dell-daily-use-pass.md) to record physical results
   file to Trash and restore it, browse and download, use Settings and Power,
   and work in the terminal. Record every confusing or failed step.
 - [ ] **Finish the C terminal.** Confirm the Dell returns healthy after the
-  [scrollback release reboot](dell-terminal-20261009.md). Add mouse text selection, PRIMARY and
-  CLIPBOARD copy/paste, safe large-paste handling, Unicode and wide-character
-  checks, alternate-screen behavior and a visible scrollback cue. Verify real
+  [scrollback release reboot](dell-terminal-20261009.md). Promote the VM-tested
+  selection and clipboard safely, then complete large-paste behavior, Unicode
+  display and wide-character checks, alternate-screen behavior and a visible
+  scrollback cue. Verify real
   PTY input, resize, Ctrl+C and window close after a reboot.
 - [ ] **Define the C shell contract.** Decide explicitly what is interactive
   Heurism shell behavior and what stays with BusyBox ash for scripts. Add
