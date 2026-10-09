@@ -1,13 +1,21 @@
 #!/bin/sh
-# Select the established Xfce shell while Companion owns the C controls/apps.
+# Select the established Xfce shell while Heurism owns the C controls/apps.
 set -eu
-state="$HOME/.local/state/companion"
-release=/opt/companion/native/current
+state="$HOME/.local/state/heurism"
+release=/opt/heurism/native/current
 mkdir -p "$state"
 pulseaudio --start --exit-idle-time=-1 >>"$state/audio.log" 2>&1 || true
 if [ "$(cat /sys/class/dmi/id/sys_vendor)" = 'Dell Inc.' ] &&
    [ "$(cat /sys/class/dmi/id/product_name)" = 'Inspiron 7506 2n1' ]; then
-    "$release/companionctl" input-apply-saved >>"$state/input-native.log" 2>&1
+    applied=0
+    for attempt in 1 2 3 4 5; do
+        if "$release/heurismctl" input-apply-saved >>"$state/input-native.log" 2>&1; then
+            applied=1
+            break
+        fi
+        sleep 1
+    done
+    test "$applied" = 1
 fi
 
 mode=xfce
@@ -31,20 +39,23 @@ if [ "$mode" = native ]; then
         wait "$wm" 2>/dev/null || true
         exit 1
     fi
-    if "$release/companion-desktop"; then result=0; else result=$?; fi
+    if "$release/heurism-desktop"; then result=0; else result=$?; fi
     kill "$wm" 2>/dev/null || true
     wait "$wm" 2>/dev/null || true
     exit "$result"
 fi
-test "$mode" = xfce || { echo "Unsupported Companion session: $mode" >&2; exit 1; }
+test "$mode" = xfce || { echo "Unsupported Heurism session: $mode" >&2; exit 1; }
 for program in xfce4-session xfwm4 xfce4-panel xfdesktop thunar mousepad; do
     command -v "$program" >/dev/null
 done
 mkdir -p "$HOME/.local/share/applications" "$HOME/.config/autostart"
-cp "$release/companion-settings.desktop" "$release/companion-terminal.desktop" \
-    "$release/companion-power.desktop" \
+cp "$release/heurism-settings.desktop" "$release/heurism-terminal.desktop" \
+    "$release/heurism-power.desktop" \
     "$HOME/.local/share/applications/"
-cp "$release/companion-power.desktop" \
+rm -f "$HOME/.local/share/applications/companion-settings.desktop" \
+    "$HOME/.local/share/applications/companion-terminal.desktop" \
+    "$HOME/.local/share/applications/companion-power.desktop"
+cp "$release/heurism-power.desktop" \
     "$HOME/.local/share/applications/xfce4-session-logout.desktop"
 cp "$release/xfce4-power-manager.desktop" "$HOME/.config/autostart/"
 export XDG_CURRENT_DESKTOP=XFCE DESKTOP_SESSION=xfce XDG_SESSION_DESKTOP=xfce

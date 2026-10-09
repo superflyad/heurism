@@ -1,12 +1,12 @@
 #!/sbin/openrc-run
-description="Companion native graphical workspace"
+description="Heurism native graphical workspace"
 supervisor=supervise-daemon
-command=/opt/companion/native/current/session.sh
+command=/opt/heurism/native/current/session.sh
 respawn_delay=5
 respawn_max=3
 respawn_period=60
-output_log=/var/log/companion-desktop.log
-error_log=/var/log/companion-desktop.log
+output_log=/var/log/heurism-desktop.log
+error_log=/var/log/heurism-desktop.log
 depend() {
     need localmount companion-control
     after companion-welcome

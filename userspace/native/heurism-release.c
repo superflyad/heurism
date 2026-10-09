@@ -15,17 +15,17 @@
 #include <sys/wait.h>
 #include <unistd.h>
 
-#define ROOT "/opt/companion/native/releases/"
-#define CURRENT "/opt/companion/native/current"
+#define ROOT "/opt/heurism/native/releases/"
+#define CURRENT "/opt/heurism/native/current"
 #define PREVIOUS "/var/lib/companion/native-previous-release"
-#define HEALTH "/var/lib/companion/desktop-user/.local/state/companion/session-health-native.json"
+#define HEALTH "/var/lib/companion/desktop-user/.local/state/heurism/session-health-native.json"
 
 static const char *required[] = {
-    "companion-sh", "companion-terminal", "companion-control", "companionctl",
-    "companion-desktop", "companion-app", "companion-files", "companion-editor",
-    "companion-session-config", "companion-release", "session.sh", "client.sh",
-    "user-session.sh", "xfce-power-panel.sh", "openbox.xml", "companion-settings.desktop",
-    "companion-terminal.desktop", "companion-power.desktop",
+    "heurism-sh", "heurism-terminal", "heurism-control", "heurismctl",
+    "heurism-desktop", "heurism-app", "heurism-files", "heurism-editor",
+    "heurism-session-config", "heurism-release", "session.sh", "client.sh",
+    "user-session.sh", "xfce-power-panel.sh", "openbox.xml", "heurism-settings.desktop",
+    "heurism-terminal.desktop", "heurism-power.desktop",
     "xfce4-power-manager.desktop"
 };
 
@@ -148,7 +148,7 @@ static bool healthy(const char *active) {
             snprintf(path, sizeof path, "/proc/%d/exe", pid) < (int)sizeof path &&
             (!strcmp(session, "xfce") ?
              snprintf(expected, sizeof expected, "%s", "/usr/bin/xfce4-session") :
-             snprintf(expected, sizeof expected, "%s/companion-desktop", release)) <
+             snprintf(expected, sizeof expected, "%s/heurism-desktop", release)) <
                 (int)sizeof expected;
     if (valid) {
         ssize_t length = readlink(path, executable, sizeof executable - 1);
@@ -167,7 +167,7 @@ static bool rollback(void) {
     char previous[PATH_MAX], current[PATH_MAX];
     if (!read_text(PREVIOUS, previous, sizeof previous) || !verify(previous) ||
         !safe_release(CURRENT, current, sizeof current)) return false;
-    const char *temporary = "/opt/companion/native/current.rollback";
+    const char *temporary = "/opt/heurism/native/current.rollback";
     if (unlink(temporary) && errno != ENOENT) return false;
     if (symlink(previous, temporary) || rename(temporary, CURRENT)) {
         unlink(temporary); return false;
@@ -182,9 +182,9 @@ static bool rollback(void) {
 
 int main(int argc, char **argv) {
     if (argc == 2 && !strcmp(argv[1], "--version")) {
-        puts("Companion native release 0.1 (C)"); return 0;
+        puts("Heurism native release 0.1 (C)"); return 0;
     }
-    if (argc < 2 || argc > 3) return fprintf(stderr, "usage: companion-release verify [path] | health | rollback\n"), 2;
+    if (argc < 2 || argc > 3) return fprintf(stderr, "usage: heurism-release verify [path] | health | rollback\n"), 2;
     if (!strcmp(argv[1], "verify") && argc <= 3) {
         bool good = verify(argc == 3 ? argv[2] : CURRENT);
         if (good) puts("Native release verified");

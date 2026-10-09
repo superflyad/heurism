@@ -1,5 +1,5 @@
 #define _GNU_SOURCE
-/* Compact X11/PTy terminal. libvterm owns VT parsing; Companion owns the process and window. */
+/* Compact X11/PTy terminal. libvterm owns VT parsing; Heurism owns the process and window. */
 #include <X11/Xlib.h>
 #include <X11/Xutil.h>
 #include <X11/keysym.h>
@@ -21,7 +21,7 @@
 #include <sys/wait.h>
 #include <unistd.h>
 
-#define SHELL_PATH "/opt/companion/native/current/companion-sh"
+#define SHELL_PATH "/opt/heurism/native/current/heurism-sh"
 #define OUT_CAPACITY 65536
 #define MARGIN 12
 
@@ -127,7 +127,7 @@ static void flush_outgoing(struct terminal *t) {
 static void terminal_output(const char *bytes, size_t length, void *context) {
     struct terminal *t = context;
     if (length > OUT_CAPACITY - t->outgoing_length) {
-        fprintf(stderr, "companion-terminal: PTY output queue full\n");
+        fprintf(stderr, "heurism-terminal: PTY output queue full\n");
         t->running = false;
         return;
     }
@@ -234,18 +234,18 @@ static void keypress(struct terminal *t, XKeyEvent *event, XIC input_context) {
 
 int main(int argc, char **argv) {
     if (argc == 2 && !strcmp(argv[1], "--version")) {
-        puts("Companion terminal 0.1 (C/X11/libvterm)"); return 0;
+        puts("Heurism terminal 0.1 (C/X11/libvterm)"); return 0;
     }
-    if (argc != 1) return fprintf(stderr, "usage: companion-terminal\n"), 2;
+    if (argc != 1) return fprintf(stderr, "usage: heurism-terminal\n"), 2;
     setlocale(LC_CTYPE, "");
     struct terminal t = {.master = -1, .running = true};
     t.display = XOpenDisplay(NULL);
-    if (!t.display) return fprintf(stderr, "companion-terminal: no X display\n"), 1;
+    if (!t.display) return fprintf(stderr, "heurism-terminal: no X display\n"), 1;
     t.screen_number = DefaultScreen(t.display);
     t.visual = DefaultVisual(t.display, t.screen_number);
-    if (t.visual->class != TrueColor) return fprintf(stderr, "companion-terminal: TrueColor display required\n"), 1;
+    if (t.visual->class != TrueColor) return fprintf(stderr, "heurism-terminal: TrueColor display required\n"), 1;
     t.font = XftFontOpenName(t.display, t.screen_number, "DejaVu Sans Mono:size=13");
-    if (!t.font) return fprintf(stderr, "companion-terminal: font unavailable\n"), 1;
+    if (!t.font) return fprintf(stderr, "heurism-terminal: font unavailable\n"), 1;
     t.cell_width = t.font->max_advance_width;
     t.cell_height = t.font->ascent + t.font->descent + 3;
     if (t.cell_width < 1 || t.cell_height < 1) return 1;
@@ -253,7 +253,7 @@ int main(int argc, char **argv) {
     t.cols = (t.width - 2 * MARGIN) / t.cell_width;
     t.rows = (t.height - 2 * MARGIN) / t.cell_height;
     t.vt = vterm_new(t.rows, t.cols);
-    if (!t.vt) return fprintf(stderr, "companion-terminal: vterm allocation failed\n"), 1;
+    if (!t.vt) return fprintf(stderr, "heurism-terminal: vterm allocation failed\n"), 1;
     vterm_set_utf8(t.vt, 1);
     t.screen = vterm_obtain_screen(t.vt);
     VTermColor fg = {.rgb = {VTERM_COLOR_RGB, 222, 235, 244}};
@@ -267,8 +267,8 @@ int main(int argc, char **argv) {
                                    BlackPixel(t.display, t.screen_number),
                                    BlackPixel(t.display, t.screen_number));
     XStoreName(t.display, t.window, geteuid() == 0 ?
-               "Companion Administrator" : "Companion C Terminal");
-    XClassHint hint = {.res_name = "companion-terminal", .res_class = "CompanionTerminal"};
+               "Heurism Administrator" : "Heurism C Terminal");
+    XClassHint hint = {.res_name = "heurism-terminal", .res_class = "HeurismTerminal"};
     XSetClassHint(t.display, t.window, &hint);
     t.wm_delete = XInternAtom(t.display, "WM_DELETE_WINDOW", False);
     XSetWMProtocols(t.display, t.window, &t.wm_delete, 1);
@@ -277,7 +277,7 @@ int main(int argc, char **argv) {
     t.gc = XCreateGC(t.display, t.window, 0, NULL);
     t.draw = XftDrawCreate(t.display, t.window, t.visual,
                            DefaultColormap(t.display, t.screen_number));
-    if (!t.draw) return fprintf(stderr, "companion-terminal: Xft failed\n"), 1;
+    if (!t.draw) return fprintf(stderr, "heurism-terminal: Xft failed\n"), 1;
     XMapWindow(t.display, t.window);
     XIM xim = XOpenIM(t.display, NULL, NULL, NULL);
     XIC xic = xim ? XCreateIC(xim, XNInputStyle, XIMPreeditNothing | XIMStatusNothing,
@@ -296,7 +296,7 @@ int main(int argc, char **argv) {
         setenv("TERM", "xterm-256color", 1);
         setenv("SHELL", SHELL_PATH, 1);
         execl(SHELL_PATH, SHELL_PATH, (char *)NULL);
-        perror("companion-sh");
+        perror("heurism-sh");
         _exit(127);
     }
     int flags = fcntl(t.master, F_GETFL);

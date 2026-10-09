@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+Name=Heurism Terminal
+Comment=Heurism C terminal and shell
+Exec=/opt/heurism/native/current/heurism-terminal
+Icon=utilities-terminal
+Terminal=false
+Categories=System;TerminalEmulator;

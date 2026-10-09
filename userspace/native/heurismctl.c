@@ -1,5 +1,5 @@
 #define _POSIX_C_SOURCE 200809L
-/* Small local client for the Companion control socket. */
+/* Small local client for the Heurism control socket. */
 #include <errno.h>
 #include <json-c/json.h>
 #include <poll.h>
@@ -11,7 +11,7 @@
 #include <sys/un.h>
 #include <unistd.h>
 
-#define DEFAULT_SOCKET "/run/companion-desktop/control.sock"
+#define DEFAULT_SOCKET "/run/heurism-desktop/control.sock"
 
 static bool write_all(int fd, const char *data, size_t length) {
     while (length) {
@@ -26,13 +26,13 @@ static bool write_all(int fd, const char *data, size_t length) {
 
 int main(int argc, char **argv) {
     if (argc == 2 && !strcmp(argv[1], "--version")) {
-        puts("Companion control client 0.1 (C)"); return 0;
+        puts("Heurism control client 0.1 (C)"); return 0;
     }
     const char *path = DEFAULT_SOCKET;
     int index = 1;
     if (argc > 2 && !strcmp(argv[1], "--socket")) { path = argv[2]; index = 3; }
     if (argc - index < 1 || argc - index > 2) {
-        fprintf(stderr, "usage: companionctl [--socket path] action [json-value]\n"); return 2;
+        fprintf(stderr, "usage: heurismctl [--socket path] action [json-value]\n"); return 2;
     }
     struct json_object *request = json_object_new_object();
     json_object_object_add(request, "version", json_object_new_int(1));

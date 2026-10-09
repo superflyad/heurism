@@ -3,8 +3,8 @@
 set -eu
 test "$(cat /sys/class/dmi/id/sys_vendor)" = 'Microsoft Corporation'
 test "$(cat /sys/class/dmi/id/product_name)" = 'Virtual Machine'
-release=/opt/companion/native/current
-"$release/companion-release" verify
-"$release/companion-release" health >/dev/null
-"$release/companionctl" power-check
-"$release/companionctl" power '{"operation":"reboot","confirm":true}'
+release=/opt/heurism/native/current
+"$release/heurism-release" verify
+"$release/heurism-release" health >/dev/null
+"$release/heurismctl" power-check
+"$release/heurismctl" power '{"operation":"reboot","confirm":true}'

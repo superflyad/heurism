@@ -1,5 +1,5 @@
 #define _GNU_SOURCE
-/* Companion workspace and dock: X11/Xft client of the local C control service. */
+/* Heurism workspace and dock: X11/Xft client of the local C control service. */
 #include <X11/Xatom.h>
 #include <X11/Xlib.h>
 #include <X11/Xutil.h>
@@ -22,7 +22,7 @@
 #include <time.h>
 #include <unistd.h>
 
-#define DEFAULT_SOCKET "/run/companion-desktop/control.sock"
+#define DEFAULT_SOCKET "/run/heurism-desktop/control.sock"
 #define MAX_HITS 64
 #define MAX_TASKS 16
 
@@ -189,7 +189,7 @@ static void refresh_status(struct desktop *d) {
     if (!send_request(d, "status", NULL, &data) || !data) {
         snprintf(d->notice, sizeof d->notice, "Local control service unavailable"); return;
     }
-    copy_field(d->hostname, sizeof d->hostname, data, "hostname", "Companion");
+    copy_field(d->hostname, sizeof d->hostname, data, "hostname", "Heurism");
     struct json_object *platform = field(data, "platform");
     d->dell = platform && !strcmp(json_object_get_string(platform), "dell");
     copy_field(d->boot_id, sizeof d->boot_id, data, "boot_id", "");
@@ -306,7 +306,7 @@ static void render_dock(struct desktop *d) {
     fill(d, d->dock, 0, 0, d->dock_width, 68, d->light ? 240 : 15,
          d->light ? 246 : 27, d->light ? 250 : 40);
     int x = 14;
-    button(d, d->dock, x, 10, 114, 46, "Companion", SHOW_MENU, 0, true); x += 120;
+    button(d, d->dock, x, 10, 114, 46, "Heurism", SHOW_MENU, 0, true); x += 120;
     const struct { const char *title; enum action action; int width; } apps[] = {
         {"Files", LAUNCH_FILES, 64}, {"Editor", LAUNCH_EDITOR, 70},
         {"Browser", LAUNCH_BROWSER, 82}, {"Terminal", LAUNCH_TERMINAL, 86}
@@ -351,7 +351,7 @@ static void render_workspace(struct desktop *d) {
         button(d, d->background, x, y, 172, 108, items[i].title, items[i].action, 0, false);
     }
     label(d, d->background, 58, d->height - 120, d->font_small,
-          "Companion on Linux  ·  Alt+Tab: switch windows", 157, 176, 198);
+          "Heurism on Linux  ·  Alt+Tab: switch windows", 157, 176, 198);
 }
 
 static const char *bios_name(int index) {
@@ -393,7 +393,7 @@ static void render_page(struct desktop *d) {
         label(d, d->background, 48, 133, d->font_large,
               "Power", 239, 245, 255);
         label(d, d->background, 48, 187, d->font_small,
-              "Restart or shut down with Companion's checked power control.",
+              "Restart or shut down with Heurism's checked power control.",
               157, 176, 198);
         button(d, d->background, 48, 220, 250, 70,
                d->pending_power == RESTART_VM && time(NULL) <= d->power_deadline ?
@@ -408,7 +408,7 @@ static void render_page(struct desktop *d) {
         return;
     }
     if (d->page == WORKSPACE) { render_workspace(d); return; }
-    const char *title = d->page == MENU ? "Companion" :
+    const char *title = d->page == MENU ? "Heurism" :
                         d->page == OVERVIEW ? "System overview" :
                         d->page == SETTINGS ? "Appearance and input" :
                         d->page == DEVICE ? "Device information" :
@@ -417,12 +417,12 @@ static void render_page(struct desktop *d) {
     label(d, d->background, 56, 164, d->font_large, title, 239, 245, 255);
     if (!d->settings_mode || d->page != MENU)
         button(d, d->background, 58, 195, 190, 44,
-               d->settings_mode ? "Companion menu" : "Back to desktop",
+               d->settings_mode ? "Heurism menu" : "Back to desktop",
                d->settings_mode ? SHOW_MENU : SHOW_WORKSPACE, 0, false);
     char line[256];
     if (d->page == MENU) {
         const struct { const char *label; enum action action; } pages[] = {
-            {d->settings_mode ? "Close Companion" : "Desktop", SHOW_WORKSPACE},
+            {d->settings_mode ? "Close Heurism" : "Desktop", SHOW_WORKSPACE},
             {"System overview", SHOW_OVERVIEW},
             {"Settings", SHOW_SETTINGS}, {"Device information", SHOW_DEVICE},
             {"Network", SHOW_NETWORK}, {"On-screen keyboard", LAUNCH_KEYBOARD},
@@ -593,7 +593,7 @@ static void publish_health(struct desktop *d) {
     char *slash = strrchr(executable, '/');
     if (!slash) return;
     *slash = 0;
-    if (snprintf(path, sizeof path, "%s/.local/state/companion/session-health-native.json", home) >= (int)sizeof path ||
+    if (snprintf(path, sizeof path, "%s/.local/state/heurism/session-health-native.json", home) >= (int)sizeof path ||
         snprintf(temporary, sizeof temporary, "%s.new.XXXXXX", path) >= (int)sizeof temporary) return;
     struct json_object *record = json_object_new_object();
     json_object_object_add(record, "pid", json_object_new_int((int)getpid()));
@@ -672,10 +672,10 @@ static void run_action(struct desktop *d, enum action action, int index) {
     case SHOW_DEVICE: d->page = DEVICE; break;
     case SHOW_NETWORK: d->page = NETWORK; break;
     case SHOW_SOUND: if (d->dell) d->page = SOUND; break;
-    case LAUNCH_FILES: launch_native(d, "companion-files"); break;
-    case LAUNCH_EDITOR: launch_native(d, "companion-editor"); break;
+    case LAUNCH_FILES: launch_native(d, "heurism-files"); break;
+    case LAUNCH_EDITOR: launch_native(d, "heurism-editor"); break;
     case LAUNCH_BROWSER: launch(d, "/usr/bin/firefox"); break;
-    case LAUNCH_TERMINAL: launch_native(d, "companion-terminal"); break;
+    case LAUNCH_TERMINAL: launch_native(d, "heurism-terminal"); break;
     case LAUNCH_KEYBOARD: launch(d, "/usr/bin/onboard"); break;
     case TOGGLE_THEME: {
         struct json_object *data = NULL;
@@ -908,9 +908,9 @@ static bool setup_x(struct desktop *d) {
     d->dock = XCreateSimpleWindow(d->display, root, d->dock_x, d->dock_y,
                                    (unsigned)d->dock_width, 68, 0, 0, 0);
     XStoreName(d->display, d->background,
-               d->power_mode ? "Companion Power" :
-               d->settings_mode ? "Companion Settings" : "Companion desktop");
-    XStoreName(d->display, d->dock, "Companion dock");
+               d->power_mode ? "Heurism Power" :
+               d->settings_mode ? "Heurism Settings" : "Heurism desktop");
+    XStoreName(d->display, d->dock, "Heurism dock");
     if (!d->settings_mode) {
         set_window_type(d, d->background, d->desktop_atom);
         set_window_type(d, d->dock, d->dock_atom);
@@ -981,7 +981,7 @@ static int show_home(void) {
 int main(int argc, char **argv) {
     setlocale(LC_ALL, "");
     if (argc == 2 && !strcmp(argv[1], "--version")) {
-        puts("Companion desktop 0.1 (C/X11/Xft)"); return 0;
+        puts("Heurism desktop 0.1 (C/X11/Xft)"); return 0;
     }
     if (argc == 2 && !strcmp(argv[1], "--home")) return show_home();
     struct desktop d = {.page = WORKSPACE, .control_socket = DEFAULT_SOCKET,
@@ -994,9 +994,9 @@ int main(int argc, char **argv) {
         d.power_mode = true;
         d.page = MENU;
     } else if (argc == 3 && !strcmp(argv[1], "--socket")) d.control_socket = argv[2];
-    else if (argc != 1) return fprintf(stderr, "usage: companion-desktop [--settings|--power|--socket path]\n"), 2;
+    else if (argc != 1) return fprintf(stderr, "usage: heurism-desktop [--settings|--power|--socket path]\n"), 2;
     signal(SIGCHLD, SIG_IGN);
-    if (!setup_x(&d)) return fprintf(stderr, "companion-desktop: X display unavailable\n"), 1;
+    if (!setup_x(&d)) return fprintf(stderr, "heurism-desktop: X display unavailable\n"), 1;
     refresh_status(&d);
     refresh_page(&d);
     refresh_tasks(&d);

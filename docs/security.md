@@ -1,11 +1,10 @@
-# Companion security status — 2026-10-03
+# Heurism security status — 2026-10-08
 
 ## What is verified on the Dell
 
 The active C release is
-`/opt/companion/native/releases/c-os-dell-20261004T004134Z-8068`.
-The preceding power release's checked UI restart returned boot
-`2fe46192-7c97-4629-97f9-757032debc23` with
+`/opt/heurism/native/releases/heurism-os-dell-20261009T011703Z-5716`.
+Its checked C reboot returned boot `e7052d51-3114-4c0f-8e06-a9a522d53bd1` with
 root SSH, watch, control and Xfce desktop healthy. The release manifest and six
 protected EFI/kernel hashes passed. `BootCurrent` is `0005`, `BootOrder` is
 `0005,0000`, `DriverOrder` is `0000,0001`, and `BootNext` is absent. These are
@@ -24,10 +23,10 @@ with a health gate and restores the prior release on failure. Its lock file
 descriptor is closed in test and service children. The existing SSD loader,
 kernel, Ethernet management path and root SSH/watch services remain in place.
 Xfce is supplied by Alpine packages. Its window manager, panel and file tools
-make the desktop more usable; they do not add a security boundary. Companion
+make the desktop more usable; they do not add a security boundary. Heurism
 Settings and the C terminal still run as UID 1000, and the C service still
 checks local peer credentials. Xfce power manager autostart is disabled in the
-user session so Companion's checked power path remains the one used by its UI.
+user session so Heurism's checked power path remains the one used by its UI.
 
 ## Limits that matter
 

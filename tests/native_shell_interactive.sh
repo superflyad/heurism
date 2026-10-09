@@ -1,9 +1,9 @@
 #!/bin/sh
 # Exercise line editing over a real PTY, including history and cursor insertion.
 set -eu
-shell=${1:?pass companion-sh binary}
+shell=${1:?pass heurism-sh binary}
 command -v script >/dev/null
-directory=$(mktemp -d /tmp/companion-shell-interactive.XXXXXX)
+directory=$(mktemp -d /tmp/heurism-shell-interactive.XXXXXX)
 trap 'rm -rf "$directory"' EXIT HUP INT TERM
 
 printf 'printf x >> %s\r\033[A\r\004' "$directory/history" |

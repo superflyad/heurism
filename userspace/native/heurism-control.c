@@ -1,5 +1,5 @@
 #define _GNU_SOURCE
-/* Companion's local control API. No network listener or arbitrary command API. */
+/* Heurism's local control API. No network listener or arbitrary command API. */
 #include <arpa/inet.h>
 #include <errno.h>
 #include <fcntl.h>
@@ -26,7 +26,7 @@
 #include <time.h>
 #include <unistd.h>
 
-#define DEFAULT_SOCKET "/run/companion-desktop/control.sock"
+#define DEFAULT_SOCKET "/run/heurism-desktop/control.sock"
 #define DEFAULT_STATE "/var/lib/companion/desktop/preferences.json"
 #define FRAME_MAX 4096
 
@@ -127,11 +127,23 @@ static bool command_run(char *const arguments[], char *output, size_t size,
         close(channels[1]);
         int nullfd = open("/dev/null", O_WRONLY);
         if (nullfd >= 0) { dup2(nullfd, STDERR_FILENO); close(nullfd); }
+        const char *authority = access("/opt/heurism/native/current", F_OK) == 0 &&
+            access("/run/heurism-desktop/Xauthority", R_OK) == 0 ?
+            "/run/heurism-desktop/Xauthority" : "/run/companion-desktop/Xauthority";
+        if (setenv("XAUTHORITY", authority, 1)) _exit(127);
         if (as_desktop) {
             struct passwd *user = getpwnam("companion-ui");
             if (!user || setgid(user->pw_gid) || setuid(user->pw_uid) ||
                 setenv("HOME", user->pw_dir, 1) ||
-                setenv("XDG_RUNTIME_DIR", "/run/companion-desktop/user", 1)) _exit(127);
+                setenv("XAUTHORITY",
+                       access("/opt/heurism/native/current", F_OK) == 0 &&
+                       access("/run/heurism-desktop/Xauthority", R_OK) == 0 ?
+                           "/run/heurism-desktop/Xauthority" :
+                           "/run/companion-desktop/Xauthority", 1) ||
+                setenv("XDG_RUNTIME_DIR",
+                       access("/opt/heurism/native/current", F_OK) == 0 &&
+                       access("/run/heurism-desktop/user", F_OK) == 0 ?
+                           "/run/heurism-desktop/user" : "/run/companion-desktop/user", 1)) _exit(127);
         }
         execv(arguments[0], arguments);
         _exit(127);
@@ -253,6 +265,7 @@ static bool verified_dell_boot(bool restore_order) {
         !command_output(boot_command, output, sizeof output) ||
         strstr(output, "BootNext:") ||
         !line_value(output, "BootOrder: ", order, sizeof order) ||
+        /* Boot0005 retains the verified firmware label from before the rename. */
         !boot_entry(output, "0005", "\\EFI\\alpine\\grubx64.efi", "Companion", "HD(") ||
         !boot_entry(output, "0000", "\\EFI\\Boot\\BootX64.efi", "NVMe", "HD("))
         return false;
@@ -905,7 +918,7 @@ static struct json_object *bios_set(struct json_object *value, const char **erro
         json_object_get_type(name) != json_type_string ||
         json_object_get_type(choice) != json_type_string ||
         !bios_writable(json_object_get_string(name))) {
-        *error = "This BIOS setting is read-only in Companion"; return NULL;
+        *error = "This BIOS setting is read-only in Heurism"; return NULL;
     }
     const char *label = json_object_get_string(name);
     const char *requested = json_object_get_string(choice);
@@ -1310,28 +1323,31 @@ static void serve_client(int client, uid_t desktop_uid) {
 
 int main(int argc, char **argv) {
     if (argc == 2 && !strcmp(argv[1], "--version")) {
-        puts("Companion control 0.1 (C)"); return 0;
+        puts("Heurism control 0.1 (C)"); return 0;
     }
     for (int i = 1; i < argc; i += 2) {
-        if (i + 1 >= argc) return fprintf(stderr, "usage: companion-control [--socket path] [--state path]\n"), 2;
+        if (i + 1 >= argc) return fprintf(stderr, "usage: heurism-control [--socket path] [--state path]\n"), 2;
         if (!strcmp(argv[i], "--socket")) socket_path = argv[i + 1];
         else if (!strcmp(argv[i], "--state")) state_path = argv[i + 1];
         else return fprintf(stderr, "unknown option: %s\n", argv[i]), 2;
     }
     dell = dell_profile();
     if (geteuid() || !(dell || vm_profile()))
-        return fprintf(stderr, "control requires root on a verified Companion platform\n"), 1;
+        return fprintf(stderr, "control requires root on a verified Heurism platform\n"), 1;
     struct passwd *desktop = getpwnam("companion-ui");
     if (!desktop) return fprintf(stderr, "companion-ui account missing\n"), 1;
     gid_t desktop_gid = desktop->pw_gid;
     uid_t desktop_uid = desktop->pw_uid;
     load_preferences();
     setenv("DISPLAY", ":0", 1);
-    setenv("XAUTHORITY", "/run/companion-desktop/Xauthority", 1);
+    setenv("XAUTHORITY",
+           access("/opt/heurism/native/current", F_OK) == 0 &&
+           access("/run/heurism-desktop/Xauthority", R_OK) == 0 ?
+               "/run/heurism-desktop/Xauthority" : "/run/companion-desktop/Xauthority", 1);
     if (!strcmp(socket_path, DEFAULT_SOCKET)) {
-        if (mkdir("/run/companion-desktop", 0750) && errno != EEXIST) return perror("mkdir"), 1;
-        if (chown("/run/companion-desktop", 0, desktop_gid) ||
-            chmod("/run/companion-desktop", 0750)) return perror("socket directory"), 1;
+        if (mkdir("/run/heurism-desktop", 0750) && errno != EEXIST) return perror("mkdir"), 1;
+        if (chown("/run/heurism-desktop", 0, desktop_gid) ||
+            chmod("/run/heurism-desktop", 0750)) return perror("socket directory"), 1;
     }
     if (unlink(socket_path) && errno != ENOENT) return perror("socket unlink"), 1;
     int server = socket(AF_UNIX, SOCK_STREAM | SOCK_CLOEXEC, 0);
@@ -1347,7 +1363,7 @@ int main(int argc, char **argv) {
     sigaction(SIGINT, &action, NULL);
     sigaction(SIGTERM, &action, NULL);
     signal(SIGPIPE, SIG_IGN);
-    puts("Companion C control ready"); fflush(stdout);
+    puts("Heurism C control ready"); fflush(stdout);
     while (!stopping) {
         int client = accept4(server, NULL, NULL, SOCK_CLOEXEC);
         if (client < 0) { if (errno == EINTR) continue; perror("accept"); break; }

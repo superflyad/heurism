@@ -6,20 +6,20 @@ test "$(cat /sys/class/dmi/id/product_name)" = 'Inspiron 7506 2n1'
 test ! -e /etc/companion/wifi.conf
 test ! -e /run/companion/wpa-wlan0.pid
 stage=/var/lib/companion/native-stage
-directory=$(mktemp -d /tmp/companion-native-wifi.XXXXXX)
+directory=$(mktemp -d /tmp/heurism-native-wifi.XXXXXX)
 chmod 755 "$directory"
-install -m 755 "$stage/companion-control" "$stage/companionctl" "$directory/"
-socket=/run/companion-desktop/control-native-wifi-$$.sock
-state=/tmp/companion-native-wifi-preferences-$$.json
+install -m 755 "$stage/heurism-control" "$stage/heurismctl" "$directory/"
+socket=/tmp/heurism-control-native-wifi-$$.sock
+state=/tmp/heurism-native-wifi-preferences-$$.json
 before=$(ip -4 -o addr show dev eth0)
-"$directory/companion-control" --socket "$socket" --state "$state" \
+"$directory/heurism-control" --socket "$socket" --state "$state" \
     >"$directory/control.log" 2>&1 &
 server=$!
 cleanup() {
     kill "$server" 2>/dev/null || true
     wait "$server" 2>/dev/null || true
     rm -f "$state" "$socket"
-    rm -f "$directory/companion-control" "$directory/companionctl" \
+    rm -f "$directory/heurism-control" "$directory/heurismctl" \
         "$directory/control.log" "$directory/result.json"
     rmdir "$directory"
 }
@@ -30,8 +30,8 @@ while [ ! -S "$socket" ]; do
     test "$attempt" -lt 20
     sleep 1
 done
-name=CompanionNoAP-$$
-if "$directory/companionctl" --socket "$socket" network-connect \
+name=HeurismNoAP-$$
+if "$directory/heurismctl" --socket "$socket" network-connect \
     "{\"ssid\":\"$name\",\"password\":\"test-only-passphrase\"}" \
     >"$directory/result.json"; then
     echo 'Unexpected association with nonexistent test network' >&2

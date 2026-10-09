@@ -1,7 +1,12 @@
-# Companion C runtime
+# Heurism C runtime
 
-Companion is a Linux OS experience built from small Unix programs. Alpine owns
-the kernel, drivers, OpenRC and standard utilities. Companion owns the C shell,
+The active C releases were renamed and installed under `/opt/heurism/native`.
+The VM and Dell both passed checked reboot into their new sealed releases;
+see [heurism-migration.md](heurism-migration.md). The release IDs and command
+names below record earlier Companion milestones and remain historical evidence.
+
+Heurism is a Linux OS experience built from small Unix programs. Alpine owns
+the kernel, drivers, OpenRC and standard utilities. Heurism owns the C shell,
 graphical terminal, original workspace, settings, apps, control service and release verifier. Their
 boundaries are process and Unix socket boundaries, like the shell and terminal:
 the terminal handles display and PTY, while the shell interprets commands; the

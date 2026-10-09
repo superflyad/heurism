@@ -10,10 +10,10 @@
   <keybind key="A-Tab"><action name="NextWindow"/></keybind>
   <keybind key="A-S-Tab"><action name="PreviousWindow"/></keybind>
   <keybind key="A-F4"><action name="Close"/></keybind>
-  <keybind key="W-d"><action name="Execute"><command>/opt/companion/native/current/companion-desktop --home</command></action></keybind>
-  <keybind key="W-space"><action name="Execute"><command>/opt/companion/native/current/companion-desktop --home</command></action></keybind>
-  <keybind key="W-Return"><action name="Execute"><command>/opt/companion/native/current/companion-terminal</command></action></keybind>
-  <keybind key="W-e"><action name="Execute"><command>/opt/companion/native/current/companion-files</command></action></keybind>
+  <keybind key="W-d"><action name="Execute"><command>/opt/heurism/native/current/heurism-desktop --home</command></action></keybind>
+  <keybind key="W-space"><action name="Execute"><command>/opt/heurism/native/current/heurism-desktop --home</command></action></keybind>
+  <keybind key="W-Return"><action name="Execute"><command>/opt/heurism/native/current/heurism-terminal</command></action></keybind>
+  <keybind key="W-e"><action name="Execute"><command>/opt/heurism/native/current/heurism-files</command></action></keybind>
  </keyboard>
  <mouse>
   <context name="Titlebar"><mousebind button="Left" action="Press"><action name="Focus"/><action name="Raise"/></mousebind>

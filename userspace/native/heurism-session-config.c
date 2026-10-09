@@ -54,7 +54,7 @@ static bool dell_profile(void) {
 static bool classify(const char *event, const char *label) {
     char sysfs[128], log[128];
     if (snprintf(sysfs, sizeof sysfs, "/sys/class/input/%s", event) >= (int)sizeof sysfs ||
-        snprintf(log, sizeof log, "/run/companion-desktop/%s-udev.log", label) >= (int)sizeof log)
+        snprintf(log, sizeof log, "/run/heurism-desktop/%s-udev.log", label) >= (int)sizeof log)
         return false;
     pid_t pid = fork();
     if (pid < 0) return false;
@@ -83,7 +83,7 @@ static bool classify_audio(void) {
     pid_t pid = fork();
     if (pid < 0) return false;
     if (!pid) {
-        int log = open("/run/companion-desktop/audio-card0-udev.log", O_WRONLY | O_CREAT | O_TRUNC, 0600);
+        int log = open("/run/heurism-desktop/audio-card0-udev.log", O_WRONLY | O_CREAT | O_TRUNC, 0600);
         if (log >= 0) { dup2(log, 1); dup2(log, 2); close(log); }
         execl("/sbin/udevadm", "udevadm", "test", "--action=change",
               "/sys/class/sound/card0", (char *)NULL);
@@ -104,14 +104,14 @@ static bool classify_audio(void) {
 
 int main(int argc, char **argv) {
     if (argc == 2 && !strcmp(argv[1], "--version")) {
-        puts("Companion session config 0.1 (C)"); return 0;
+        puts("Heurism session config 0.1 (C)"); return 0;
     }
-    const char *output = "/run/companion-desktop/xorg.conf";
+    const char *output = "/run/heurism-desktop/xorg.conf";
     if (argc == 3 && !strcmp(argv[1], "--output")) output = argv[2];
-    else if (argc != 1) return fprintf(stderr, "usage: companion-session-config [--output path]\n"), 2;
+    else if (argc != 1) return fprintf(stderr, "usage: heurism-session-config [--output path]\n"), 2;
     bool vm = vm_profile(), dell = dell_profile();
     if (geteuid() || !(vm || dell))
-        return fprintf(stderr, "verified Companion root and platform required\n"), 1;
+        return fprintf(stderr, "verified Heurism root and platform required\n"), 1;
     struct stat info;
     if (vm && (stat("/dev/fb0", &info) || !S_ISCHR(info.st_mode)))
         return fprintf(stderr, "Hyper-V framebuffer missing\n"), 1;
@@ -205,7 +205,7 @@ int main(int argc, char **argv) {
             "EndSection\n", ids[i], events[i]);
     fprintf(file,
         "Section \"ServerLayout\"\n"
-        " Identifier \"companion\"\n"
+        " Identifier \"heurism\"\n"
         " Screen \"screen\"\n");
     for (int i = 0; i < count; i++)
         fprintf(file, " InputDevice \"%s\" \"%s\"\n", ids[i], roles[i]);
@@ -214,6 +214,6 @@ int main(int argc, char **argv) {
     if (fclose(file)) good = false;
     if (good) good = rename(temporary, output) == 0;
     if (!good) { unlink(temporary); return perror("xorg config"), 1; }
-    printf("Companion %s Xorg config: %s, %s\n", vm ? "VM" : "Dell", keyboard, pointer);
+    printf("Heurism %s Xorg config: %s, %s\n", vm ? "VM" : "Dell", keyboard, pointer);
     return 0;
 }

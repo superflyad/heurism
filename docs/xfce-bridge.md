@@ -1,9 +1,9 @@
 # Xfce desktop bridge
 
-The established desktop in Companion is Alpine's Xfce 4.20 on the existing
+The established desktop in Heurism is Alpine's Xfce 4.20 on the existing
 Linux/Xorg foundation. It supplies window management, a top application panel,
 a bottom launcher dock, desktop icons, Thunar file management, Mousepad editing
-and an ordinary Xfce terminal. Companion-owned shell, terminal, settings,
+and an ordinary Xfce terminal. Heurism owned shell, terminal, settings,
 control and release verification remain C programs. No boot loader, kernel,
 Ethernet driver, root SSH service or watch service was replaced.
 
@@ -11,14 +11,14 @@ Ethernet driver, root SSH service or watch service was replaced.
 configured Xorg and the platform. It applies saved Dell input settings, starts
 the user audio server and launches `xfce4-session`. Health is published only
 after `xfwm4`, `xfce4-panel`, `xfdesktop` and an X11 window manager are live.
-The sealed `companion-release` verifier checks that health against the current
+The sealed `heurism-release` verifier checks that health against the current
 release, boot ID, UID 1000 and a live Xfce session process. The native release
 installer has an isolated Xvfb sidecar test and a rollback gate.
 
-The application menu contains **Companion Settings** and **Companion C
+The application menu contains **Heurism Settings** and **Heurism C
 Terminal**. The top-right red power icon and **Applications > System >
-Companion Power** open the C power window. They replace Xfce's session actions
-button and disabled Log Out menu item. Companion Power requires two clicks
+Heurism Power** open the C power window. They replace Xfce's session actions
+button and disabled Log Out menu item. Heurism Power requires two clicks
 within ten seconds and uses the checked C control socket. Settings is the C
 platform control UI in a normal window; its
 Sound, Input, Network, BIOS and checked Power pages still use the C root socket
@@ -32,6 +32,9 @@ selects the original C workspace and dock. Removing the file restores Xfce.
 Use the VM installer on `CompanionDev` and the exact-DMI guarded Dell installer
 for versioned releases. Root SSH and `companion-watch` are independent of the
 session in either mode. The sealed Python/Tk release remains a deeper fallback.
+The active renamed releases and checked reboot evidence are recorded in
+[heurism-migration.md](heurism-migration.md). The evidence below is the earlier
+Xfce bridge baseline under its installed names.
 
 ## Verification on 2026-10-03
 

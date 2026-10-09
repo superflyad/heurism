@@ -10,31 +10,31 @@ CONTROL_CFLAGS = $(shell $(PKG_CONFIG) --cflags json-c)
 CONTROL_LIBS = $(shell $(PKG_CONFIG) --libs json-c)
 
 .PHONY: all clean
-all: companion-sh companion-terminal companion-control companionctl companion-desktop companion-app companion-session-config companion-release
+all: heurism-sh heurism-terminal heurism-control heurismctl heurism-desktop heurism-app heurism-session-config heurism-release
 
-companion-sh: companion-sh.c
+heurism-sh: heurism-sh.c
 	$(CC) $(STRICT_CFLAGS) $(CFLAGS) -o $@ $<
 
-companion-terminal: companion-terminal.c
+heurism-terminal: heurism-terminal.c
 	$(CC) $(STRICT_CFLAGS) $(CFLAGS) $(TERMINAL_CFLAGS) -o $@ $< $(TERMINAL_LIBS)
 
-companion-control: companion-control.c
+heurism-control: heurism-control.c
 	$(CC) $(STRICT_CFLAGS) $(CFLAGS) $(CONTROL_CFLAGS) -o $@ $< $(CONTROL_LIBS) -lcrypto
 
-companionctl: companionctl.c
+heurismctl: heurismctl.c
 	$(CC) $(STRICT_CFLAGS) $(CFLAGS) $(CONTROL_CFLAGS) -o $@ $< $(CONTROL_LIBS)
 
-companion-desktop: companion-desktop.c
+heurism-desktop: heurism-desktop.c
 	$(CC) $(STRICT_CFLAGS) $(CFLAGS) $(X11_CFLAGS) $(CONTROL_CFLAGS) -o $@ $< $(X11_LIBS) $(CONTROL_LIBS)
 
-companion-app: companion-app.c
+heurism-app: heurism-app.c
 	$(CC) $(STRICT_CFLAGS) $(CFLAGS) $(X11_CFLAGS) $(CONTROL_CFLAGS) -o $@ $< $(X11_LIBS) $(CONTROL_LIBS)
 
-companion-session-config: companion-session-config.c
+heurism-session-config: heurism-session-config.c
 	$(CC) $(STRICT_CFLAGS) $(CFLAGS) $(CONTROL_CFLAGS) -o $@ $< $(CONTROL_LIBS)
 
-companion-release: companion-release.c
+heurism-release: heurism-release.c
 	$(CC) $(STRICT_CFLAGS) $(CFLAGS) $(CONTROL_CFLAGS) -o $@ $< $(CONTROL_LIBS)
 
 clean:
-	rm -f companion-sh companion-terminal companion-control companionctl companion-desktop companion-app companion-session-config companion-release
+	rm -f heurism-sh heurism-terminal heurism-control heurismctl heurism-desktop heurism-app heurism-session-config heurism-release

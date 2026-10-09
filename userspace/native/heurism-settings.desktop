@@ -1,8 +1,8 @@
 [Desktop Entry]
 Type=Application
-Name=Companion Settings
+Name=Heurism Settings
 Comment=Hardware and system controls
-Exec=/opt/companion/native/current/companion-desktop --settings
+Exec=/opt/heurism/native/current/heurism-desktop --settings
 Icon=preferences-system
 Terminal=false
 Categories=Settings;

@@ -1,5 +1,5 @@
 #define _POSIX_C_SOURCE 200809L
-/* Companion's small Unix command shell. No graphics, privilege changes, or network API. */
+/* Heurism's small Unix command shell. No graphics, privilege changes, or network API. */
 #include <ctype.h>
 #include <errno.h>
 #include <signal.h>
@@ -353,7 +353,7 @@ static int builtin(struct command *cmd, bool *handled) {
         return 0;
     }
     if (!strcmp(name, "help")) {
-        puts("Companion shell: cd, pwd, export, unset, exit, help; Unix programs, pipes and redirection.");
+        puts("Heurism shell: cd, pwd, export, unset, exit, help; Unix programs, pipes and redirection.");
         return 0;
     }
     *handled = false;
@@ -458,7 +458,7 @@ static int execute_segment(const char *line) {
     int expanded_count = 0;
     int count = 0;
     if (!lex(line, tokens, &count)) {
-        fprintf(stderr, "companion-sh: invalid or oversized command line\n");
+        fprintf(stderr, "heurism-sh: invalid or oversized command line\n");
         free_tokens(tokens, count);
         return 2;
     }
@@ -521,7 +521,7 @@ static int execute_segment(const char *line) {
     free_tokens(tokens, count);
     return status;
 syntax:
-    fprintf(stderr, "companion-sh: syntax error\n");
+    fprintf(stderr, "heurism-sh: syntax error\n");
     for (int i = 0; i < expanded_count; i++) free(expanded[i]);
     free_tokens(tokens, count);
     return 2;
@@ -539,7 +539,7 @@ static int execute(const char *line) {
         if (!ch || comment || (ch == ';' && !quote && !escaped)) {
             size_t n = (size_t)(p - start);
             char segment[MAX_LINE + 1];
-            if (n > MAX_LINE) return fprintf(stderr, "companion-sh: command too long\n"), 2;
+            if (n > MAX_LINE) return fprintf(stderr, "heurism-sh: command too long\n"), 2;
             memcpy(segment, start, n);
             segment[n] = 0;
             status = execute_segment(segment);
@@ -576,7 +576,7 @@ static char *prompt_text(void) {
     char marker = geteuid() ? '$' : '#';
     size_t needed = strlen(place) + 32;
     char *prompt = malloc(needed);
-    if (prompt) snprintf(prompt, needed, "companion:%s%s%c ", in_home ? "~" : "",
+    if (prompt) snprintf(prompt, needed, "heurism:%s%s%c ", in_home ? "~" : "",
                          place, marker);
     free(cwd);
     return prompt;
@@ -584,10 +584,10 @@ static char *prompt_text(void) {
 
 int main(int argc, char **argv) {
     if (argc == 2 && !strcmp(argv[1], "--version")) {
-        puts("Companion shell 0.1 (C/POSIX)"); return 0;
+        puts("Heurism shell 0.1 (C/POSIX)"); return 0;
     }
     if (argc == 3 && !strcmp(argv[1], "-c")) return execute(argv[2]);
-    if (argc != 1) return fprintf(stderr, "usage: companion-sh [-c command]\n"), 2;
+    if (argc != 1) return fprintf(stderr, "usage: heurism-sh [-c command]\n"), 2;
     bool interactive = isatty(STDIN_FILENO);
     if (interactive) {
         struct sigaction action = {.sa_handler = on_interrupt};
@@ -618,7 +618,7 @@ int main(int argc, char **argv) {
         if (n > MAX_LINE || (n && line[n - 1] != '\n' && !feof(stdin))) {
             int ch;
             while ((ch = getchar()) != '\n' && ch != EOF) {}
-            fprintf(stderr, "companion-sh: line exceeds %d bytes\n", MAX_LINE);
+            fprintf(stderr, "heurism-sh: line exceeds %d bytes\n", MAX_LINE);
             last_status = 2;
             continue;
         }

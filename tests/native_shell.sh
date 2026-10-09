@@ -1,16 +1,16 @@
 #!/bin/sh
 # Behavioral checks for the C shell. Uses only POSIX tools and a private directory.
 set -eu
-shell=${1:?pass companion-sh binary}
+shell=${1:?pass heurism-sh binary}
 tmp=$(mktemp -d)
 trap 'rm -rf "$tmp"' EXIT HUP INT TERM
 
-test "$("$shell" --version)" = 'Companion shell 0.1 (C/POSIX)'
+test "$("$shell" --version)" = 'Heurism shell 0.1 (C/POSIX)'
 test "$("$shell" -c 'printf "<%s>" "a b"')" = '<a b>'
 test "$("$shell" -c "printf '<%s>' ''")" = '<>'
 test "$("$shell" -c 'printf "abc" | tr a-z A-Z')" = ABC
 test "$("$shell" -c 'cd /tmp; pwd')" = /tmp
-test "$("$shell" -c 'export COMPANION_TEST=ready; printf "%s" "$COMPANION_TEST"')" = ready
+test "$("$shell" -c 'export HEURISM_TEST=ready; printf "%s" "$HEURISM_TEST"')" = ready
 test "$("$shell" -c 'false; printf "%s" "$?"')" = 1
 test "$("$shell" -c 'printf "%s" "a;b"; printf z')" = 'a;bz'
 test "$("$shell" -c 'printf ok # ignore; printf bad')" = ok

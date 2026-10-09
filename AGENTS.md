@@ -1,5 +1,29 @@
 # Current product direction
 
+The owner renamed the OS product to **Heurism** and asked for a deep C runtime
+migration. Active VM and Dell releases now use `/opt/heurism/native/current`,
+with `heurism-*` C executables, Xfce launchers, a new runtime socket and
+`/usr/local/bin` command links. The VM release is
+`/opt/heurism/native/releases/heurism-os-20261009T011559Z-4876`, fresh boot
+`3791a271-7f76-415c-a832-b84450371a79`. The Dell release is
+`/opt/heurism/native/releases/heurism-os-dell-20261009T011703Z-5716`, fresh
+boot `e7052d51-3114-4c0f-8e06-a9a522d53bd1`. After Dell reboot, release
+and Xfce health, C power/input/sound, root SSH/watch/control, all six protected
+hashes and the SSD boot state passed. Dell-added auto-created NIC BootOrder
+entries were verified and BootOrder restored to `0005,0000`; DriverOrder is
+`0000,0001`, BootCurrent `0005`, BootNext absent. Temporary build packages
+were removed. The first Dell activation rolled back; a later candidate
+passed activation but failed desktop startup after reboot, so the previous
+service scripts were restored while SSH/watch stayed healthy. The final
+candidate fixed dynamic X authority selection, added bounded input retries
+and a startup failure marker, then passed the checked reboot. See
+`docs/heurism-migration.md`. The old `/opt/companion` releases, EFI files,
+OpenRC service names, account, management hostnames, `/etc/companion` and
+protected manifests are installed compatibility/recovery interfaces. Preserve
+their verified identity until a separate guarded migration proves replacement.
+The local Git repository has commits but no remote; the current branch is
+`task/heurism-rename`.
+
 The owner asked for a usable revamp with an established desktop. The current
 default VM and Dell user session is Alpine Xfce 4.20 over Xorg, with Thunar and
 Mousepad. Companion-owned shell, terminal, settings, control and release

@@ -1,8 +1,8 @@
 [Desktop Entry]
 Type=Application
-Name=Companion Power
+Name=Heurism Power
 Comment=Checked restart and shut down
-Exec=/opt/companion/native/current/companion-desktop --power
+Exec=/opt/heurism/native/current/heurism-desktop --power
 Icon=xfsm-shutdown
 Terminal=false
 Categories=System;

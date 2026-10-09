@@ -49,7 +49,11 @@ def guest(command):
 def wait_ready(after_boot):
     check_target()
     deadline = time.monotonic()+90
-    command = ("if test -x /opt/companion/native/current/companion-release; then "
+    command = ("if test -x /opt/heurism/native/current/heurism-release; then "
+               "/opt/heurism/native/current/heurism-release verify >/dev/null && "
+               "/opt/heurism/native/current/heurism-release health && "
+               "/opt/heurism/native/current/heurismctl status; "
+               "elif test -x /opt/companion/native/current/companion-release; then "
                "/opt/companion/native/current/companion-release verify >/dev/null && "
                "/opt/companion/native/current/companion-release health && "
                "/opt/companion/native/current/companionctl status; "
@@ -156,8 +160,12 @@ def capture(name, surface='root', require_ui=False):
         raise ValueError('Invalid screenshot name')
     check_target()
     remote = '/var/lib/companion/desktop-stage/evidence/'+name+'.xwd'
-    selection = '-root' if surface == 'root' else '-id "$(xdotool search --onlyvisible --name ^Companion$ | tail -1)"'
-    guest('mkdir -p /var/lib/companion/desktop-stage/evidence; export DISPLAY=:0 XAUTHORITY=/run/companion-desktop/Xauthority; xwd '+selection+' -silent -out '+remote)
+    selection = '-root' if surface == 'root' else '-id "$(xdotool search --onlyvisible --name ^Heurism$ | tail -1)"'
+    guest('mkdir -p /var/lib/companion/desktop-stage/evidence; export DISPLAY=:0; '
+          'if test -r /run/heurism-desktop/Xauthority; then '
+          'export XAUTHORITY=/run/heurism-desktop/Xauthority; '
+          'else export XAUTHORITY=/run/companion-desktop/Xauthority; fi; '
+          'xwd '+selection+' -silent -out '+remote)
     local = OUT/(name+'.xwd')
     call(['scp', *guest_options(), 'root@'+GUEST+':'+remote, str(local)], timeout=60)
     raw = local.read_bytes()

@@ -1,5 +1,5 @@
 #define _GNU_SOURCE
-/* Companion Files and Editor share one small X11/Xft executable. */
+/* Heurism Files and Editor share one small X11/Xft executable. */
 #include <X11/Xlib.h>
 #include <X11/Xutil.h>
 #include <X11/keysym.h>
@@ -135,7 +135,7 @@ static int compare_entries(const void *left, const void *right) {
 
 static bool is_trash(struct app *a) {
     char path[PATH_MAX];
-    return path_join(path, sizeof path, a->home, ".local/share/companion/trash") &&
+    return path_join(path, sizeof path, a->home, ".local/share/heurism/trash") &&
            !strcmp(a->directory, path);
 }
 
@@ -200,9 +200,9 @@ static void open_selected(struct app *a) {
         if (length <= 0 || length >= (ssize_t)sizeof program - 1) _exit(127);
         program[length] = 0;
         char *slash = strrchr(program, '/');
-        if (!slash || (size_t)(slash - program) + strlen("/companion-editor") >= sizeof program)
+        if (!slash || (size_t)(slash - program) + strlen("/heurism-editor") >= sizeof program)
             _exit(127);
-        strcpy(slash + 1, "companion-editor");
+        strcpy(slash + 1, "heurism-editor");
         execl(program, program, path, (char *)NULL);
         _exit(127);
     }
@@ -218,11 +218,11 @@ static bool prompt_basename(struct app *a, char *target, size_t size) {
 static void trash_selected(struct app *a) {
     char source[PATH_MAX], trash[PATH_MAX], destination[PATH_MAX], metadata[PATH_MAX];
     if (!selected_path(a, source, sizeof source) || is_trash(a) ||
-        !path_join(trash, sizeof trash, a->home, ".local/share/companion/trash")) return;
-    char share[PATH_MAX], companion[PATH_MAX];
+        !path_join(trash, sizeof trash, a->home, ".local/share/heurism/trash")) return;
+    char share[PATH_MAX], heurism[PATH_MAX];
     if (!path_join(share, sizeof share, a->home, ".local/share") ||
-        !path_join(companion, sizeof companion, share, "companion") ||
-        !ensure_directory(share, 0700) || !ensure_directory(companion, 0700) ||
+        !path_join(heurism, sizeof heurism, share, "heurism") ||
+        !ensure_directory(share, 0700) || !ensure_directory(heurism, 0700) ||
         !ensure_directory(trash, 0700)) goto failed;
     struct timespec now;
     clock_gettime(CLOCK_REALTIME, &now);
@@ -475,11 +475,11 @@ static void command(struct app *a, enum command action) {
     case RESTORE: restore_selected(a); break;
     case REFRESH: list_directory(a); break;
     case TRASH_BIN:
-        if (path_join(path, sizeof path, a->home, ".local/share/companion/trash")) {
-            char share[PATH_MAX], companion[PATH_MAX];
+        if (path_join(path, sizeof path, a->home, ".local/share/heurism/trash")) {
+            char share[PATH_MAX], heurism[PATH_MAX];
             if (path_join(share, sizeof share, a->home, ".local/share") &&
-                path_join(companion, sizeof companion, share, "companion") &&
-                ensure_directory(share, 0700) && ensure_directory(companion, 0700) &&
+                path_join(heurism, sizeof heurism, share, "heurism") &&
+                ensure_directory(share, 0700) && ensure_directory(heurism, 0700) &&
                 ensure_directory(path, 0700)) navigate(a, path);
         }
         break;
@@ -745,7 +745,7 @@ static bool setup(struct app *a) {
     a->window = XCreateSimpleWindow(a->display, RootWindow(a->display, a->screen),
                                     180, 100, (unsigned)a->width, (unsigned)a->height,
                                     0, 0, 0);
-    XStoreName(a->display, a->window, a->mode == FILES ? "Companion Files" : "Companion Editor");
+    XStoreName(a->display, a->window, a->mode == FILES ? "Heurism Files" : "Heurism Editor");
     XSelectInput(a->display, a->window, ExposureMask | ButtonPressMask |
                  KeyPressMask | StructureNotifyMask | FocusChangeMask);
     a->delete_window = XInternAtom(a->display, "WM_DELETE_WINDOW", False);
@@ -768,7 +768,7 @@ static bool setup(struct app *a) {
 
 int main(int argc, char **argv) {
     if (argc == 2 && !strcmp(argv[1], "--version")) {
-        puts("Companion Files/Editor 0.1 (C/X11/Xft)"); return 0;
+        puts("Heurism Files/Editor 0.1 (C/X11/Xft)"); return 0;
     }
     setlocale(LC_CTYPE, "");
     struct app a = {.selected = -1};
@@ -789,17 +789,17 @@ int main(int argc, char **argv) {
         char local[PATH_MAX], state[PATH_MAX];
         if (path_join(local, sizeof local, a.home, ".local") &&
             path_join(state, sizeof state, local, "state") &&
-            path_join(a.draft, sizeof a.draft, state, "companion/native-editor-draft.json")) {
-            char companion[PATH_MAX];
-            if (path_join(companion, sizeof companion, state, "companion") &&
+            path_join(a.draft, sizeof a.draft, state, "heurism/native-editor-draft.json")) {
+            char heurism[PATH_MAX];
+            if (path_join(heurism, sizeof heurism, state, "heurism") &&
                 ensure_directory(local, 0700) && ensure_directory(state, 0700))
-                ensure_directory(companion, 0700);
+                ensure_directory(heurism, 0700);
         }
         if (argc == 2) set_file(&a, argv[1]);
         else load_draft(&a);
     }
     configure_buttons(&a);
-    if (!setup(&a)) return fprintf(stderr, "Companion application requires X11 TrueColor\n"), 1;
+    if (!setup(&a)) return fprintf(stderr, "Heurism application requires X11 TrueColor\n"), 1;
     render(&a);
     bool running = true;
     while (running) {

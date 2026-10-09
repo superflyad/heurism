@@ -1,12 +1,17 @@
-# Companion
+# Heurism
+
+Heurism is an Alpine Linux based OS experience with C owned shell, terminal,
+settings, control service, and release verifier. Xfce supplies the established
+desktop session. Older installed boot and management interfaces retain their
+previous identifiers during migration.
 
 Development runs first in the [PrimeServer Hyper-V VM](docs/prime-vm.md),
 `CompanionDev`, with separate root SSH, versioned UI releases, host reset and
 checkpoints. Guarded releases also run on the physical Dell. Linux remains the
 kernel and hardware foundation on both targets. The active Dell desktop uses
 Alpine's established Xfce session for its panel, workspace, window management,
-file manager and editor. The [native C runtime](docs/native-runtime.md) still
-provides the Companion shell, graphical terminal, hardware settings, local
+file manager and editor. The [native C runtime](docs/native-runtime.md) provides
+the Heurism shell, graphical terminal, hardware settings, local
 root control service and sealed release verifier. The original C workspace is
 selectable for recovery and the previous Python/Tk desktop remains sealed.
 See the [Xfce bridge](docs/xfce-bridge.md) for integration details and the
@@ -14,9 +19,14 @@ See the [Xfce bridge](docs/xfce-bridge.md) for integration details and the
 
 On the Dell, use the red power icon at the top right for Restart or Shut down.
 Choose an action, then click its confirmation button within ten seconds. This
-uses Companion's checked C power control. The old Xfce Log Out dialog had
-disabled power actions here; Applications > System > Companion Power is now
+uses Heurism's checked C power control. The old Xfce Log Out dialog had
+disabled power actions here; Applications > System > Heurism Power is now
 the working menu route.
+
+The active sealed C releases are selected by `/opt/heurism/native/current` on
+both machines. See the [Heurism migration record](docs/heurism-migration.md)
+for release IDs, checks and the older boot and recovery identifiers that remain
+in place.
 
 The [provisioning USB](docs/provisioning-usb.md) now provides the path to root
 remote access, hardware auditing and a persistent management installation on
@@ -39,7 +49,7 @@ SSH. Its initial loader still depends on the SSD and includes an SSD fallback.
 A personal computer platform we can understand and control, using the Dell
 Inspiron 7506 2-in-1 as practice hardware (target 0). The aim is ownership of
 startup policy, system services, hardware controls, applications and interface.
-Linux supplies the kernel and device drivers. We are building the Companion OS
+Linux supplies the kernel and device drivers. We are building the Heurism OS
 experience, not a Linux replacement. See the [architecture](docs/architecture.md)
 and [product roadmap](docs/roadmap.md).
 
