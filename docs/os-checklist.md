@@ -21,8 +21,9 @@ test result and rollback path. See the [architecture](architecture.md),
 - [x] Xfce provides a panel, workspace, file manager, editor and browser;
   Heurism C Settings and checked Restart/Shut down have live Dell evidence.
 - [x] The C shell, PTY terminal, control socket and sealed release verifier
-  exist. The latest scrollback improvement is **VM only**; it is not yet the
-  active Dell terminal.
+  exist. Bounded scrollback passed a live Dell session before a checked reboot,
+  but [post-reboot Dell health is unverified](dell-terminal-20261009.md).
+  The later scrollback title cue is VM only.
 - [x] A fresh C-first VM image booted, painted the desktop, passed fallback and
   checked power tests. The physical Dell still uses its guarded installed
   release and existing SSD boot path.
@@ -37,8 +38,8 @@ Use the [Dell daily-use pass](dell-daily-use-pass.md) to record physical results
   display and input to open Files, create/edit/save/reopen documents, move a
   file to Trash and restore it, browse and download, use Settings and Power,
   and work in the terminal. Record every confusing or failed step.
-- [ ] **Finish the C terminal.** Promote the verified bounded scrollback to the
-  Dell through its guarded installer. Add mouse text selection, PRIMARY and
+- [ ] **Finish the C terminal.** Confirm the Dell returns healthy after the
+  [scrollback release reboot](dell-terminal-20261009.md). Add mouse text selection, PRIMARY and
   CLIPBOARD copy/paste, safe large-paste handling, Unicode and wide-character
   checks, alternate-screen behavior and a visible scrollback cue. Verify real
   PTY input, resize, Ctrl+C and window close after a reboot.

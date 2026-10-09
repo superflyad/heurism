@@ -2,7 +2,8 @@
 
 ## What is verified on the Dell
 
-The active C release is
+The last fully verified C release before the later
+[terminal update and unverified reboot](dell-terminal-20261009.md) was
 `/opt/heurism/native/releases/heurism-os-dell-20261009T020254Z-7718`.
 Its checked C reboot returned boot `d5e85973-2087-4fc9-ab40-d43251868a3a` with
 root SSH, watch, control and Xfce desktop healthy. The release manifest and six
@@ -52,8 +53,9 @@ The active desktop and control OpenRC services are `heurism-desktop` and
   from every firmware failure.
 - The C shell is a usable interactive command launcher with editing, session
   history and basic globbing. It is not a complete POSIX shell; BusyBox ash
-  remains the script and recovery shell. The graphical terminal still needs
-  scrollback, clipboard and accessibility support.
+  remains the script and recovery shell. Bounded graphical-terminal scrollback
+  passed a live Dell test before the unverified reboot; clipboard and
+  accessibility support remain incomplete.
 
 ## Next engineering gates
 

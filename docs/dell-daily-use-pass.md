@@ -24,8 +24,13 @@ service, firmware, boot entry or user file was changed.
 | Storage | Root filesystem about 1% used; 440.6 GiB available |
 | Session lock | `xflock4` wrapper is present, but no supported locker package or process was found. There is no verified lock/unlock path. |
 
-The laptop can remain running for the first hands-on pass. A later cold boot
-must repeat the pass to satisfy the checklist's full acceptance criterion.
+Once the laptop is reachable, the first hands-on pass can run without a planned
+power cycle. A later cold boot must repeat it to satisfy the checklist's full
+acceptance criterion.
+
+**Update:** a [terminal release activation](dell-terminal-20261009.md) passed
+on this boot, but its checked reboot did not return to remote management.
+The baseline above is historical; the Dell's present state is unverified.
 
 ## Hands-on pass
 

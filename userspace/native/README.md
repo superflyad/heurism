@@ -33,7 +33,7 @@ so its controls do not bypass Heurism's checked power path. See
 [xfce-bridge.md](../../docs/xfce-bridge.md).
 
 The active VM release is selected by `/opt/heurism/native/current` and is
-`/opt/heurism/native/releases/heurism-os-20261009T015910Z-3115`.
+`/opt/heurism/native/releases/heurism-os-20261009T160434Z-17598`.
 The separate fresh-image candidate uses `install-image-vm.sh` during image
 construction. It seals the compiled C binaries before first boot, installs
 the active C services and provides the Xfce-to-C-workspace startup fallback.
@@ -48,7 +48,9 @@ session can fall back to the sealed legacy UI if its own X startup fails. Root
 SSH and `companion-watch` run independently of the desktop. Do not deploy this
 VM installer on the Dell. The Dell has its own exact-DMI installer,
 `install-native-dell.sh`, and the active sealed release
-`/opt/heurism/native/releases/heurism-os-dell-20261009T020254Z-7718`. The Dell
+`/opt/heurism/native/releases/heurism-os-dell-20261009T155551Z-25889` before
+a checked reboot whose remote return remains unverified. See
+[the Dell terminal update record](../../docs/dell-terminal-20261009.md). The Dell
 installer's `assemble` action does not switch services. `activate` changes
 only the desktop/control OpenRC scripts and native release symlink, with a
 20-second health gate and automatic restoration of the previous scripts and
@@ -74,8 +76,9 @@ pathname globbing. It is smaller than a POSIX script shell: it lacks job control
 command substitution, functions and completion. BusyBox ash remains
 for startup and recovery scripts. The local terminal candidate retains up to
 512 scrolled lines and supports Shift+PageUp/PageDown and mouse-wheel history
-navigation; the existing VM and Dell releases do not yet have that change.
-The terminal still lacks selection, clipboard, application mouse reporting and
+navigation. The current VM release also shows the scrollback position in the
+window title. The Dell ran the preceding scrollback build before its unverified
+reboot. The terminal still lacks selection, clipboard, application mouse reporting and
 accessibility support. Firefox and Onboard
 remain external Unix applications. Administrator access uses authenticated root
 SSH; it no longer opens a root terminal in the shared X11 session. See

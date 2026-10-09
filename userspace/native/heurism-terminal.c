@@ -49,6 +49,7 @@ struct terminal {
     size_t outgoing_length;
     struct history_line history[HISTORY_CAPACITY];
     size_t history_head, history_count, view_offset;
+    char title[96];
     bool running;
 };
 
@@ -116,6 +117,16 @@ static unsigned long pixel(struct terminal *t, VTermColor color) {
 }
 
 static void redraw(struct terminal *t) {
+    char title[sizeof t->title];
+    const char *base = geteuid() == 0 ? "Heurism Administrator" : "Heurism C Terminal";
+    if (t->view_offset)
+        snprintf(title, sizeof title, "%s [scrollback %zu/%zu]", base,
+                 t->view_offset, t->history_count);
+    else snprintf(title, sizeof title, "%s", base);
+    if (strcmp(title, t->title)) {
+        XStoreName(t->display, t->window, title);
+        memcpy(t->title, title, strlen(title) + 1);
+    }
     VTermColor default_bg = {.rgb = {VTERM_COLOR_RGB, 10, 19, 29}};
     XSetForeground(t->display, t->gc, pixel(t, default_bg));
     XFillRectangle(t->display, t->window, t->gc, 0, 0,
@@ -357,8 +368,6 @@ int main(int argc, char **argv) {
                                    120, 90, (unsigned)t.width, (unsigned)t.height, 0,
                                    BlackPixel(t.display, t.screen_number),
                                    BlackPixel(t.display, t.screen_number));
-    XStoreName(t.display, t.window, geteuid() == 0 ?
-               "Heurism Administrator" : "Heurism C Terminal");
     XClassHint hint = {.res_name = "heurism-terminal", .res_class = "HeurismTerminal"};
     XSetClassHint(t.display, t.window, &hint);
     t.wm_delete = XInternAtom(t.display, "WM_DELETE_WINDOW", False);
