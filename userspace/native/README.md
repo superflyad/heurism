@@ -33,7 +33,7 @@ so its controls do not bypass Heurism's checked power path. See
 [xfce-bridge.md](../../docs/xfce-bridge.md).
 
 The active VM release is selected by `/opt/heurism/native/current` and is
-`/opt/heurism/native/releases/heurism-os-20261009T173229Z-54707`.
+`/opt/heurism/native/releases/heurism-os-20261009T175459Z-69087`.
 The separate fresh-image candidate uses `install-image-vm.sh` during image
 construction. It seals the compiled C binaries before first boot, installs
 the active C services and provides the Xfce-to-C-workspace startup fallback.
@@ -71,9 +71,10 @@ argument or configuration file. Temporary build headers can be removed
 after sealing. See [native-runtime.md](../../docs/native-runtime.md) for test
 evidence and remaining work.
 
-The shell has cursor editing, session-only command history and unquoted whole-word
-pathname globbing. It is smaller than a POSIX script shell: it lacks job control,
-command substitution, functions and completion. BusyBox ash remains
+The shell has cursor editing, session-only command history, unquoted whole-word
+pathname globbing and VM-tested [interactive job control](../../docs/shell-job-control.md).
+It is smaller than a POSIX script shell: it lacks command substitution,
+functions and completion. BusyBox ash remains
 for startup and recovery scripts. The local terminal candidate retains up to
 512 scrolled lines and supports Shift+PageUp/PageDown and mouse-wheel history
 navigation. The current VM release also shows the scrollback position in the

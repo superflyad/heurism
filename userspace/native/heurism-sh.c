@@ -21,6 +21,7 @@
 #define MAX_ARGS 128
 #define MAX_CMDS 16
 #define HISTORY_SIZE 64
+#define MAX_JOBS 32
 
 enum kind { WORD, PIPE, SEMI, INPUT, OUTPUT, APPEND, ERROR_OUT, ERROR_APPEND };
 struct token { enum kind kind; char *text; bool expand_glob; };
@@ -34,11 +35,116 @@ struct pipeline { struct command commands[MAX_CMDS]; int count; };
 static int last_status;
 static bool shell_exit;
 static volatile sig_atomic_t interrupted;
+static volatile sig_atomic_t hangup_requested;
 struct history { char *lines[HISTORY_SIZE]; int count; };
+struct job {
+    pid_t pgid, pids[MAX_CMDS];
+    unsigned char state[MAX_CMDS]; /* 0 running, 1 stopped, 2 finished */
+    int count, last_status;
+    unsigned long serial;
+    char *description;
+};
+static struct job jobs[MAX_JOBS];
+static unsigned long next_job_serial;
+static bool interactive_shell;
+static pid_t shell_pgid;
+
+static bool job_done(const struct job *job) {
+    for (int i = 0; i < job->count; i++) if (job->state[i] != 2) return false;
+    return true;
+}
+
+static bool job_stopped(const struct job *job) {
+    bool stopped = false;
+    for (int i = 0; i < job->count; i++) {
+        if (job->state[i] == 0) return false;
+        if (job->state[i] == 1) stopped = true;
+    }
+    return stopped;
+}
+
+static void job_clear(struct job *job) {
+    free(job->description);
+    memset(job, 0, sizeof *job);
+}
+
+static void job_status(struct job *job, pid_t pid, int status) {
+    for (int i = 0; i < job->count; i++) {
+        if (job->pids[i] != pid) continue;
+        if (WIFSTOPPED(status)) job->state[i] = 1;
+        else if (WIFCONTINUED(status)) job->state[i] = 0;
+        else if (WIFEXITED(status) || WIFSIGNALED(status)) {
+            job->state[i] = 2;
+            if (i == job->count - 1)
+                job->last_status = WIFEXITED(status) ? WEXITSTATUS(status) :
+                                   128 + WTERMSIG(status);
+        }
+        return;
+    }
+}
+
+static void reap_jobs(void) {
+    for (int i = 0; i < MAX_JOBS; i++) {
+        struct job *job = &jobs[i];
+        if (!job->pgid) continue;
+        int status;
+        pid_t pid;
+        while ((pid = waitpid(-job->pgid, &status, WNOHANG | WUNTRACED | WCONTINUED)) > 0)
+            job_status(job, pid, status);
+        if (job_done(job)) {
+            if (interactive_shell) printf("[%d] Done %s\n", i + 1, job->description);
+            job_clear(job);
+        }
+    }
+}
+
+static int wait_foreground(struct job *job, int number) {
+    int status;
+    pid_t pid;
+    while (!job_done(job) && !job_stopped(job)) {
+        pid = waitpid(-job->pgid, &status, WUNTRACED);
+        if (pid > 0) job_status(job, pid, status);
+        else if (errno != EINTR || hangup_requested) break;
+    }
+    if (interactive_shell && !hangup_requested && tcsetpgrp(STDIN_FILENO, shell_pgid))
+        perror("tcsetpgrp");
+    if (hangup_requested) return 128 + SIGHUP;
+    if (job_stopped(job)) {
+        printf("[%d] Stopped %s\n", number, job->description);
+        return 128 + SIGTSTP;
+    }
+    int code = job->last_status;
+    job_clear(job);
+    return code;
+}
+
+static int select_job(const struct command *cmd) {
+    if (cmd->argc > 2) return fprintf(stderr, "%s: too many arguments\n", cmd->argv[0]), -1;
+    if (cmd->argc == 2) {
+        const char *value = cmd->argv[1];
+        if (*value == '%') value++;
+        char *end;
+        long number = strtol(value, &end, 10);
+        if (!*value || *end || number < 1 || number > MAX_JOBS || !jobs[number - 1].pgid)
+            return fprintf(stderr, "%s: no such job\n", cmd->argv[0]), -1;
+        return (int)number - 1;
+    }
+    int newest = -1;
+    for (int i = 0; i < MAX_JOBS; i++)
+        if (jobs[i].pgid && (newest < 0 || jobs[i].serial > jobs[newest].serial))
+            newest = i;
+    if (newest >= 0) return newest;
+    return fprintf(stderr, "%s: no current job\n", cmd->argv[0]), -1;
+}
 
 static void on_interrupt(int signal_number) {
     (void)signal_number;
     interrupted = 1;
+}
+
+static void on_hangup(int signal_number) {
+    (void)signal_number;
+    hangup_requested = 1;
 }
 
 static size_t previous_character(const char *line, size_t cursor) {
@@ -108,6 +214,7 @@ static int read_interactive_line(char *line, size_t capacity, const char *prompt
         unsigned char byte;
         ssize_t count = read(STDIN_FILENO, &byte, 1);
         if (count < 0 && errno == EINTR) {
+            if (hangup_requested) break;
             if (interrupted) { result = -1; break; }
             continue;
         }
@@ -352,8 +459,38 @@ static int builtin(struct command *cmd, bool *handled) {
         }
         return 0;
     }
+    if (!strcmp(name, "jobs")) {
+        if (cmd->argc != 1) return fprintf(stderr, "jobs: no arguments expected\n"), 2;
+        reap_jobs();
+        for (int i = 0; i < MAX_JOBS; i++)
+            if (jobs[i].pgid) printf("[%d] %s %s\n", i + 1,
+                                     job_stopped(&jobs[i]) ? "Stopped" : "Running",
+                                     jobs[i].description);
+        return 0;
+    }
+    if (!strcmp(name, "fg") || !strcmp(name, "bg")) {
+        reap_jobs();
+        int index = select_job(cmd);
+        if (index < 0) return 1;
+        struct job *job = &jobs[index];
+        if (!strcmp(name, "fg") && interactive_shell &&
+            tcsetpgrp(STDIN_FILENO, job->pgid)) return perror("tcsetpgrp"), 1;
+        for (int i = 0; i < job->count; i++)
+            if (job->state[i] == 1) job->state[i] = 0;
+        if (kill(-job->pgid, SIGCONT) && errno != ESRCH) {
+            perror("SIGCONT");
+            if (interactive_shell && !strcmp(name, "fg")) tcsetpgrp(STDIN_FILENO, shell_pgid);
+            return 1;
+        }
+        if (!strcmp(name, "bg")) {
+            printf("[%d] Running %s\n", index + 1, job->description);
+            return 0;
+        }
+        printf("%s\n", job->description);
+        return wait_foreground(job, index + 1);
+    }
     if (!strcmp(name, "help")) {
-        puts("Heurism shell: cd, pwd, export, unset, exit, help; Unix programs, pipes and redirection.");
+        puts("Heurism shell: cd, pwd, export, unset, jobs, fg, bg, exit, help; Unix programs, pipes and redirection.");
         return 0;
     }
     *handled = false;
@@ -397,13 +534,30 @@ static int run_builtin_parent(struct command *cmd) {
 
 static bool is_builtin(const char *name) {
     return !strcmp(name, "cd") || !strcmp(name, "pwd") || !strcmp(name, "export") ||
-           !strcmp(name, "unset") || !strcmp(name, "exit") || !strcmp(name, "help");
+           !strcmp(name, "unset") || !strcmp(name, "exit") || !strcmp(name, "help") ||
+           !strcmp(name, "jobs") || !strcmp(name, "fg") || !strcmp(name, "bg");
 }
 
-static int run_pipeline(struct pipeline *p) {
-    if (p->count == 1 && is_builtin(p->commands[0].argv[0]))
+static bool is_job_builtin(const char *name) {
+    return !strcmp(name, "jobs") || !strcmp(name, "fg") || !strcmp(name, "bg");
+}
+
+static int run_pipeline(struct pipeline *p, bool background, const char *description) {
+    for (int i = 0; i < p->count; i++)
+        if (is_job_builtin(p->commands[i].argv[0]) && (background || p->count != 1))
+            return fprintf(stderr, "%s: requires the foreground shell\n",
+                           p->commands[i].argv[0]), 2;
+    if (!background && p->count == 1 && is_builtin(p->commands[0].argv[0]))
         return run_builtin_parent(&p->commands[0]);
-    pid_t pids[MAX_CMDS];
+    int slot = -1;
+    for (int i = 0; i < MAX_JOBS; i++) if (!jobs[i].pgid) { slot = i; break; }
+    if (slot < 0) return fprintf(stderr, "heurism-sh: job table full\n"), 1;
+    struct job *job = &jobs[slot];
+    job->description = strdup(description);
+    if (!job->description) return perror("strdup"), 1;
+    job->serial = ++next_job_serial;
+    int gate[2];
+    if (pipe(gate)) { perror("pipe"); job_clear(job); return 1; }
     int previous = -1, spawned = 0;
     bool failed = false;
     for (int i = 0; i < p->count; i++) {
@@ -417,8 +571,18 @@ static int run_pipeline(struct pipeline *p) {
             break;
         }
         if (pid == 0) {
+            pid_t group = job->pgid ? job->pgid : getpid();
+            if (setpgid(0, group)) _exit(1);
+            close(gate[1]);
+            char release;
+            while (read(gate[0], &release, 1) < 0 && errno == EINTR) {}
+            close(gate[0]);
             signal(SIGINT, SIG_DFL);
             signal(SIGQUIT, SIG_DFL);
+            signal(SIGHUP, SIG_DFL);
+            signal(SIGTSTP, SIG_DFL);
+            signal(SIGTTIN, SIG_DFL);
+            signal(SIGTTOU, SIG_DFL);
             if (previous >= 0 && dup2(previous, STDIN_FILENO) < 0) _exit(1);
             if (next[1] >= 0 && dup2(next[1], STDOUT_FILENO) < 0) _exit(1);
             if (previous >= 0) close(previous);
@@ -435,24 +599,44 @@ static int run_pipeline(struct pipeline *p) {
             fprintf(stderr, "%s: %s\n", cmd->argv[0], strerror(errno));
             _exit(errno == ENOENT ? 127 : 126);
         }
-        pids[spawned++] = pid;
+        if (!job->pgid) job->pgid = pid;
+        if (setpgid(pid, job->pgid) && errno != EACCES && errno != ESRCH) {
+            perror("setpgid"); failed = true;
+        }
+        job->pids[job->count++] = pid;
+        spawned++;
         if (previous >= 0) close(previous);
         if (next[1] >= 0) close(next[1]);
         previous = next[0];
+        if (failed) break;
     }
     if (previous >= 0) close(previous);
-    int code = 1;
-    for (int i = 0; i < spawned; i++) {
-        int status = 0;
-        pid_t result;
-        do { result = waitpid(pids[i], &status, 0); } while (result < 0 && errno == EINTR);
-        if (i == spawned - 1) code = result < 0 ? 1 : WIFEXITED(status) ? WEXITSTATUS(status) :
-                                     WIFSIGNALED(status) ? 128 + WTERMSIG(status) : 1;
+    close(gate[0]);
+    if (failed) {
+        if (job->pgid) kill(-job->pgid, SIGTERM);
+        close(gate[1]);
+        for (int i = 0; i < spawned; i++) waitpid(job->pids[i], NULL, 0);
+        job_clear(job);
+        return 1;
     }
-    return failed ? 1 : code;
+    if (background) {
+        close(gate[1]);
+        if (interactive_shell) printf("[%d] %ld\n", slot + 1, (long)job->pgid);
+        return 0;
+    }
+    if (interactive_shell && tcsetpgrp(STDIN_FILENO, job->pgid)) {
+        perror("tcsetpgrp");
+        kill(-job->pgid, SIGTERM);
+        close(gate[1]);
+        for (int i = 0; i < spawned; i++) waitpid(job->pids[i], NULL, 0);
+        job_clear(job);
+        return 1;
+    }
+    close(gate[1]);
+    return wait_foreground(job, slot + 1);
 }
 
-static int execute_segment(const char *line) {
+static int execute_segment(const char *line, bool background) {
     struct token tokens[MAX_TOKENS] = {0};
     char *expanded[MAX_ARGS * MAX_CMDS];
     int expanded_count = 0;
@@ -513,7 +697,7 @@ static int execute_segment(const char *line) {
                 goto syntax;
             }
             cmd->argv[cmd->argc] = NULL;
-            status = run_pipeline(&p);
+            status = run_pipeline(&p, background, line);
             break;
         }
     }
@@ -536,13 +720,13 @@ static int execute(const char *line) {
     for (const char *p = line; ; p++) {
         char ch = *p;
         bool comment = ch == '#' && word_start && !quote && !escaped;
-        if (!ch || comment || (ch == ';' && !quote && !escaped)) {
+        if (!ch || comment || ((ch == ';' || ch == '&') && !quote && !escaped)) {
             size_t n = (size_t)(p - start);
             char segment[MAX_LINE + 1];
             if (n > MAX_LINE) return fprintf(stderr, "heurism-sh: command too long\n"), 2;
             memcpy(segment, start, n);
             segment[n] = 0;
-            status = execute_segment(segment);
+            status = execute_segment(segment, ch == '&');
             last_status = status;
             if (!ch || comment || shell_exit) break;
             start = p + 1;
@@ -582,14 +766,35 @@ static char *prompt_text(void) {
     return prompt;
 }
 
+static void shutdown_jobs(void) {
+    for (int i = 0; i < MAX_JOBS; i++) if (jobs[i].pgid) {
+        kill(-jobs[i].pgid, SIGHUP);
+        kill(-jobs[i].pgid, SIGCONT);
+        job_clear(&jobs[i]);
+    }
+}
+
 int main(int argc, char **argv) {
+    struct sigaction hangup = {.sa_handler = on_hangup};
+    sigemptyset(&hangup.sa_mask);
+    sigaction(SIGHUP, &hangup, NULL);
     if (argc == 2 && !strcmp(argv[1], "--version")) {
         puts("Heurism shell 0.1 (C/POSIX)"); return 0;
     }
-    if (argc == 3 && !strcmp(argv[1], "-c")) return execute(argv[2]);
+    if (argc == 3 && !strcmp(argv[1], "-c")) {
+        int status = execute(argv[2]);
+        shutdown_jobs();
+        return status;
+    }
     if (argc != 1) return fprintf(stderr, "usage: heurism-sh [-c command]\n"), 2;
-    bool interactive = isatty(STDIN_FILENO);
-    if (interactive) {
+    interactive_shell = isatty(STDIN_FILENO);
+    if (interactive_shell) {
+        shell_pgid = getpgrp();
+        if (tcgetpgrp(STDIN_FILENO) != shell_pgid)
+            return fprintf(stderr, "heurism-sh: terminal is not in foreground\n"), 1;
+        signal(SIGTSTP, SIG_IGN);
+        signal(SIGTTIN, SIG_IGN);
+        signal(SIGTTOU, SIG_IGN);
         struct sigaction action = {.sa_handler = on_interrupt};
         sigemptyset(&action.sa_mask);
         sigaction(SIGINT, &action, NULL);
@@ -598,8 +803,10 @@ int main(int argc, char **argv) {
     char line[MAX_LINE + 2];
     struct history history = {0};
     while (!shell_exit) {
+        if (hangup_requested) break;
         int input = 1;
-        if (interactive) {
+        reap_jobs();
+        if (interactive_shell) {
             char *prompt = prompt_text();
             if (!prompt) break;
             fputs(prompt, stdout);
@@ -607,6 +814,7 @@ int main(int argc, char **argv) {
             input = read_interactive_line(line, sizeof line, prompt, &history);
             free(prompt);
         } else if (!fgets(line, sizeof line, stdin)) input = 0;
+        if (hangup_requested) break;
         if (input < 0) {
             putchar('\n');
             last_status = 130;
@@ -617,7 +825,7 @@ int main(int argc, char **argv) {
         size_t n = strlen(line);
         bool complete = n && line[n - 1] == '\n';
         if (n > MAX_LINE || (n && !complete && !feof(stdin))) {
-            if (!interactive && !complete) {
+            if (!interactive_shell && !complete) {
                 int ch;
                 while ((ch = getchar()) != '\n' && ch != EOF) {}
             }
@@ -626,11 +834,12 @@ int main(int argc, char **argv) {
             continue;
         }
         last_status = execute(line);
-        if (interactive && interrupted) {
+        if (interactive_shell && interrupted) {
             putchar('\n');
             interrupted = 0;
         }
     }
+    shutdown_jobs();
     for (int i = 0; i < history.count; i++) free(history.lines[i]);
     return last_status;
 }

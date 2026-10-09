@@ -59,8 +59,8 @@ The active desktop and control OpenRC services are `heurism-desktop` and
 
 ## Next engineering gates
 
-1. Make terminal scrollback, clipboard and window behavior dependable, then
-   complete the shell interaction model, including job control and completion.
+1. Verify VM-tested terminal and shell improvements after reboot, then
+   complete wrapped-line selection, broad Unicode behavior and shell completion.
 2. Split desktop privileges by application and require a separate, explicit
    administrator authentication path for sensitive actions. Replace the shared
    X11 trust boundary before treating untrusted desktop apps as isolated.

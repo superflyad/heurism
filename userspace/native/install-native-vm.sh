@@ -26,6 +26,7 @@ if [ "${1:-}" = assemble ]; then
     sh "$stage/native_xfce_bridge.sh" "$stage/heurism-desktop"
     sh "$stage/native_shell.sh" "$stage/heurism-sh"
     sh "$stage/native_shell_interactive.sh" "$stage/heurism-sh"
+    sh "$stage/native_shell_jobs.sh" "$stage/heurism-sh"
     test_directory=$(mktemp -d "$root/test.XXXXXX")
     install -m 755 "$stage/heurism-control" "$stage/heurismctl" "$test_directory/"
     chmod 755 "$test_directory"

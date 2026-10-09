@@ -4,6 +4,11 @@ The active C releases were renamed and installed under `/opt/heurism/native`.
 The VM and Dell both passed checked reboot into their new sealed releases;
 see [heurism-migration.md](heurism-migration.md). The release IDs and command
 names below record earlier Companion milestones and remain historical evidence.
+The development VM currently runs
+`/opt/heurism/native/releases/heurism-os-20261009T175459Z-69087` with
+[interactive C shell job control](shell-job-control.md). The Dell's return after
+its later checked reboot remains unverified; see
+[the incident record](dell-terminal-20261009.md).
 
 Heurism is a Linux OS experience built from small Unix programs. Alpine owns
 the kernel, drivers, OpenRC and standard utilities. Heurism owns the C shell,
@@ -23,9 +28,9 @@ service, hardware policy, sealed release verifier and root SSH/watch path remain
 independent of Xfce. The original C workspace can be selected for recovery.
 Details and validation are in [xfce-bridge.md](xfce-bridge.md).
 
-The active VM release is
+The VM release at this 2026-10-03 milestone was
 `/opt/companion/native/releases/c-os-20261004T004048Z-7138` and the active
-Dell release is
+Dell release then was
 `/opt/companion/native/releases/c-os-dell-20261004T004134Z-8068`.
 The preceding Xfce bridge release survived a checked reboot to fresh boot
 `620b5571-88de-46b4-9576-0c43cbfc737d`: SSH, watch, C control, Xfce UI,

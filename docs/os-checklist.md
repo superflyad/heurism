@@ -48,9 +48,11 @@ Use the [Dell daily-use pass](dell-daily-use-pass.md) to record physical results
   PTY input, resize, Ctrl+C and window close after a reboot.
 - [ ] **Define the C shell contract.** Decide explicitly what is interactive
   Heurism shell behavior and what stays with BusyBox ash for scripts. Add
-  foreground/background jobs, terminal process groups and signals, completion,
+  completion,
   quoting/globbing consistency, environment handling and useful error status.
-  Test with real PTYs, pipelines and interrupted jobs.
+  [Foreground/background jobs, process groups and signals](shell-job-control.md)
+  passed real VM PTY tests, including pipelines and interrupted jobs; Dell
+  promotion and a post-reboot VM check remain open.
 - [ ] **Make ordinary desktop tasks coherent.** Applications, file types,
   default opener, browser downloads, drag-and-drop, notifications, search,
   keyboard shortcuts and window switching should work predictably together.
