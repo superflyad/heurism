@@ -1,0 +1,100 @@
+#!/bin/sh
+# Switch only the C desktop and control OpenRC names; SSH/watch stay independent.
+set -eu
+profile=${1:-}
+case "$profile" in
+    vm)
+        test "$(cat /sys/class/dmi/id/sys_vendor)" = 'Microsoft Corporation'
+        test "$(cat /sys/class/dmi/id/product_name)" = 'Virtual Machine'
+        test -f /etc/companion/platform.json
+        protected=/etc/companion/vm-protected.sha256 ;;
+    dell)
+        test "$(cat /sys/class/dmi/id/sys_vendor)" = 'Dell Inc.'
+        test "$(cat /sys/class/dmi/id/product_name)" = 'Inspiron 7506 2n1'
+        test ! -e /etc/companion/platform.json
+        protected=/var/lib/companion/presentation-20260927T161814Z/protected.sha256 ;;
+    *) echo 'usage: heurism-services-migrate vm|dell' >&2; exit 2 ;;
+esac
+test "$(id -u)" = 0
+exec 9>/run/heurism-services-migrate.lock
+flock -n 9
+release=$(readlink -f /opt/heurism/native/current)
+case "$release" in /opt/heurism/native/releases/*) ;; *) exit 1;; esac
+"$release/heurism-release" verify "$release" >/dev/null
+test -f "$release/desktop-heurism.initd"
+test -L /etc/runlevels/default/companion-control
+test -L /etc/runlevels/default/companion-desktop
+test ! -e /etc/init.d/heurism-control
+test ! -e /etc/init.d/heurism-desktop
+rc-service companion-control status >/dev/null
+rc-service companion-desktop status >/dev/null
+rc-service companion-watch status >/dev/null
+rc-service sshd status >/dev/null
+sha256sum -c "$protected" >/dev/null
+"$release/heurism-release" health >/dev/null
+"$release/heurismctl" power-check >/dev/null
+backup=/var/lib/companion/heurism-services-backup-$(date -u +%Y%m%dT%H%M%SZ)-$$
+install -d -m 700 "$backup"
+cp -p /etc/init.d/companion-control "$backup/control.initd"
+cp -p /etc/init.d/companion-desktop "$backup/desktop.initd"
+printf '%s\n' "$release" > "$backup/release"
+
+stop_desktop() {
+    rc-service "$1" stop 9>&- >/dev/null 2>&1 || true
+    if [ -f /tmp/.X0-lock ]; then
+        pid=$(tr -d ' ' </tmp/.X0-lock)
+        case "$pid" in ''|*[!0-9]*) return 1;; esac
+        if [ "$(readlink "/proc/$pid/exe" 2>/dev/null || true)" = /usr/libexec/Xorg ]; then
+            kill "$pid" 2>/dev/null || true
+        fi
+    fi
+    for attempt in 1 2 3 4 5 6 7 8 9 10; do
+        test ! -e /tmp/.X0-lock && return 0
+        sleep 1
+    done
+    return 1
+}
+restore() {
+    trap - EXIT HUP INT TERM
+    stop_desktop heurism-desktop || true
+    rc-service heurism-control stop 9>&- >/dev/null 2>&1 || true
+    rc-update del heurism-desktop default >/dev/null 2>&1 || true
+    rc-update del heurism-control default >/dev/null 2>&1 || true
+    rc-update add companion-control default >/dev/null 2>&1 || true
+    rc-update add companion-desktop default >/dev/null 2>&1 || true
+    rc-service companion-control start 9>&-
+    rc-service companion-desktop start 9>&-
+    echo 'Heurism service migration failed; previous services restored' >&2
+}
+trap restore EXIT HUP INT TERM
+stop_desktop companion-desktop
+rc-service companion-control stop 9>&-
+install -m 755 "$release/control.initd" /etc/init.d/heurism-control
+install -m 755 "$release/desktop-heurism.initd" /etc/init.d/heurism-desktop
+rc-update add heurism-control default >/dev/null
+rc-update add heurism-desktop default >/dev/null
+rc-update del companion-desktop default >/dev/null
+rc-update del companion-control default >/dev/null
+rc-service heurism-control start 9>&-
+rc-service heurism-desktop start 9>&-
+ready=0
+for attempt in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20; do
+    if "$release/heurism-release" health >/dev/null 2>&1; then
+        ready=1; break
+    fi
+    sleep 1
+done
+test "$ready" = 1
+"$release/heurism-release" verify "$release" >/dev/null
+"$release/heurismctl" power-check >/dev/null
+sha256sum -c "$protected" >/dev/null
+rc-service sshd status >/dev/null
+rc-service companion-watch status >/dev/null
+rc-service heurism-control status >/dev/null
+rc-service heurism-desktop status >/dev/null
+test -L /etc/runlevels/default/heurism-control
+test -L /etc/runlevels/default/heurism-desktop
+test ! -e /etc/runlevels/default/companion-control
+test ! -e /etc/runlevels/default/companion-desktop
+trap - EXIT HUP INT TERM
+echo "Heurism desktop/control services active; rollback copy: $backup"

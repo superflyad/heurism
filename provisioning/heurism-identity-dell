@@ -1,0 +1,76 @@
+#!/bin/sh
+# Change the installed Dell's presentation identity without touching SSH keys or boot files.
+set -eu
+stage=/var/lib/companion/heurism-identity-stage
+protected=/var/lib/companion/presentation-20260927T161814Z/protected.sha256
+test "$(id -u)" = 0
+test "$(cat /sys/class/dmi/id/sys_vendor)" = 'Dell Inc.'
+test "$(cat /sys/class/dmi/id/product_name)" = 'Inspiron 7506 2n1'
+case "$(cat /etc/hostname)" in companion-dell|heurism-dell) ;; *) exit 1;; esac
+test -x /opt/heurism/native/current/heurism-release
+rc-service sshd status >/dev/null
+rc-service companion-watch status >/dev/null
+sha256sum -c "$protected" >/dev/null
+for item in watch welcome status welcome.initd; do
+    test -f "$stage/$item"
+    sh -n "$stage/$item"
+done
+for item in status audit wifi next-boot; do
+    test -x "/etc/companion/bin/companion-$item"
+    test ! -e "/usr/local/sbin/heurism-$item"
+    test ! -L "/usr/local/sbin/heurism-$item"
+done
+
+exec 9>/run/heurism-identity-dell.lock
+flock -n 9
+backup=/var/lib/companion/heurism-identity-backup-$(date -u +%Y%m%dT%H%M%SZ)-$$
+install -d -m 700 "$backup"
+cp -p /etc/hostname "$backup/hostname"
+cp -p /etc/companion/bin/companion-watch "$backup/watch"
+cp -p /etc/companion/bin/companion-welcome "$backup/welcome"
+cp -p /etc/companion/bin/companion-status "$backup/status"
+cp -p /etc/init.d/companion-welcome "$backup/welcome.initd"
+cp -p /etc/issue "$backup/issue"
+cp -p /etc/motd "$backup/motd"
+oldhost=$(cat "$backup/hostname")
+
+restore() {
+    trap - EXIT HUP INT TERM
+    cp -p "$backup/hostname" /etc/hostname
+    hostname "$oldhost"
+    cp -p "$backup/watch" /etc/companion/bin/companion-watch
+    cp -p "$backup/welcome" /etc/companion/bin/companion-welcome
+    cp -p "$backup/status" /etc/companion/bin/companion-status
+    cp -p "$backup/welcome.initd" /etc/init.d/companion-welcome
+    cp -p "$backup/issue" /etc/issue
+    cp -p "$backup/motd" /etc/motd
+    for item in status audit wifi next-boot; do
+        test ! -L "/usr/local/sbin/heurism-$item" || rm "/usr/local/sbin/heurism-$item"
+    done
+    echo 'Dell identity migration rolled back' >&2
+}
+trap restore EXIT HUP INT TERM
+
+install -m 755 "$stage/watch" /etc/companion/bin/companion-watch
+install -m 755 "$stage/welcome" /etc/companion/bin/companion-welcome
+install -m 755 "$stage/status" /etc/companion/bin/companion-status
+install -m 755 "$stage/welcome.initd" /etc/init.d/companion-welcome
+printf '%s\n' heurism-dell > /etc/hostname.new
+chmod 644 /etc/hostname.new
+mv -f /etc/hostname.new /etc/hostname
+hostname heurism-dell
+for item in status audit wifi next-boot; do
+    ln -s "/etc/companion/bin/companion-$item" "/usr/local/sbin/heurism-$item"
+done
+/etc/companion/bin/companion-welcome
+test "$(cat /etc/hostname)" = heurism-dell
+test "$(hostname)" = heurism-dell
+grep -q HEURISM /etc/issue
+/opt/heurism/native/current/heurism-release verify >/dev/null
+/opt/heurism/native/current/heurism-release health >/dev/null
+/opt/heurism/native/current/heurismctl power-check >/dev/null
+rc-service sshd status >/dev/null
+rc-service companion-watch status >/dev/null
+sha256sum -c "$protected" >/dev/null
+trap - EXIT HUP INT TERM
+echo "Dell identity active: heurism-dell; rollback copy: $backup"

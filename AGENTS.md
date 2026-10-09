@@ -1,26 +1,28 @@
 # Current product direction
 
 The owner renamed the OS product to **Heurism** and asked for a deep C runtime
-migration. Active VM and Dell releases now use `/opt/heurism/native/current`,
-with `heurism-*` C executables, Xfce launchers, a new runtime socket and
-`/usr/local/bin` command links. The VM release is
-`/opt/heurism/native/releases/heurism-os-20261009T011559Z-4876`, fresh boot
-`3791a271-7f76-415c-a832-b84450371a79`. The Dell release is
-`/opt/heurism/native/releases/heurism-os-dell-20261009T011703Z-5716`, fresh
-boot `e7052d51-3114-4c0f-8e06-a9a522d53bd1`. After Dell reboot, release
-and Xfce health, C power/input/sound, root SSH/watch/control, all six protected
-hashes and the SSD boot state passed. Dell-added auto-created NIC BootOrder
-entries were verified and BootOrder restored to `0005,0000`; DriverOrder is
-`0000,0001`, BootCurrent `0005`, BootNext absent. Temporary build packages
-were removed. The first Dell activation rolled back; a later candidate
-passed activation but failed desktop startup after reboot, so the previous
-service scripts were restored while SSH/watch stayed healthy. The final
-candidate fixed dynamic X authority selection, added bounded input retries
-and a startup failure marker, then passed the checked reboot. See
-`docs/heurism-migration.md`. The old `/opt/companion` releases, EFI files,
-OpenRC service names, account, management hostnames, `/etc/companion` and
-protected manifests are installed compatibility/recovery interfaces. Preserve
-their verified identity until a separate guarded migration proves replacement.
+migration. Active VM and Dell releases use `/opt/heurism/native/current`,
+`heurism-*` C executables and Xfce launchers. Current releases are VM
+`/opt/heurism/native/releases/heurism-os-20261009T015910Z-3115` and Dell
+`/opt/heurism/native/releases/heurism-os-dell-20261009T020254Z-7718`.
+The hostnames are `heurism-vm` and `heurism-dell`; the active C services are
+`heurism-control` and `heurism-desktop`. The old desktop/control service files
+remain disabled for rollback. Dell fresh boot
+`0654ac09-1cb1-4014-ab7f-9a7766d387c9` passed release/UI health, C power,
+root SSH/watch/control, six protected hashes and default SSD boot state after
+the verified auto-created USB NIC entries were removed from BootOrder.
+BootCurrent is `0005`, BootOrder `0005,0000`, DriverOrder `0000,0001`, BootNext
+absent. The native install staging directory was found world-writable and is
+now mode `0700` root-owned on VM and Dell; both installers reject writable
+stage inputs. Temporary build headers were removed. A checked attempt to
+rename Boot0005 with `efibootmgr -b 0005 -L` had no effect; raw entry bytes
+match the backup. The protected EFI files and labels, `companion-ui` account,
+independent `companion-watch`, `/etc/companion` and healthy-boot records,
+pinned SSH identities and sealed Python/Tk recovery remain compatibility and
+recovery interfaces. Do not change these without a complete recovery gate.
+See `docs/heurism-migration.md`.
+The VM final release also passed a checked fresh boot
+`44ae8e38-07e5-4acc-bacd-4efa95d0a528` with the new services.
 The local Git repository has commits but no remote; the current branch is
 `task/heurism-rename`.
 

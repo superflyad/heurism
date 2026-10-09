@@ -29,8 +29,13 @@ if [ -n "$before" ]; then
 else
     test ! -e /opt/heurism/native/current
 fi
-rc-service companion-control status >/dev/null
-rc-service companion-desktop status >/dev/null
+if [ -L /etc/runlevels/default/heurism-control ]; then
+    rc-service heurism-control status >/dev/null
+    rc-service heurism-desktop status >/dev/null
+else
+    rc-service companion-control status >/dev/null
+    rc-service companion-desktop status >/dev/null
+fi
 rc-service companion-watch status >/dev/null
 rc-service sshd status >/dev/null
 echo 'Dell sealed-release corruption rejection passed; active desktop unchanged'

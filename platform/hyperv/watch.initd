@@ -1,5 +1,5 @@
 #!/sbin/openrc-run
-description="Independent Companion VM management health"
+description="Independent Heurism VM management health"
 supervisor=supervise-daemon
 command=/usr/local/sbin/companion-vm-watch
 respawn_delay=3

@@ -3,8 +3,8 @@
 ## What is verified on the Dell
 
 The active C release is
-`/opt/heurism/native/releases/heurism-os-dell-20261009T011703Z-5716`.
-Its checked C reboot returned boot `e7052d51-3114-4c0f-8e06-a9a522d53bd1` with
+`/opt/heurism/native/releases/heurism-os-dell-20261009T020254Z-7718`.
+Its checked C reboot returned boot `0654ac09-1cb1-4014-ab7f-9a7766d387c9` with
 root SSH, watch, control and Xfce desktop healthy. The release manifest and six
 protected EFI/kernel hashes passed. `BootCurrent` is `0005`, `BootOrder` is
 `0005,0000`, `DriverOrder` is `0000,0001`, and `BootNext` is absent. These are
@@ -20,13 +20,20 @@ root terminal in the shared X11 session is gone.
 
 The Dell installer checks exact DMI, verifies sealed release files, activates
 with a health gate and restores the prior release on failure. Its lock file
-descriptor is closed in test and service children. The existing SSD loader,
+descriptor is closed in test and service children. A root installer staging
+directory was found writable by UID 1000. It is now root-owned mode `0700` on
+the Dell and VM, and both installers reject writable staged inputs. VM tests
+proved they reject a writable file and a writable directory. This closes that
+specific stage modification path; it does not prove earlier contents were
+never modified. The existing SSD loader,
 kernel, Ethernet management path and root SSH/watch services remain in place.
 Xfce is supplied by Alpine packages. Its window manager, panel and file tools
 make the desktop more usable; they do not add a security boundary. Heurism
 Settings and the C terminal still run as UID 1000, and the C service still
 checks local peer credentials. Xfce power manager autostart is disabled in the
 user session so Heurism's checked power path remains the one used by its UI.
+The active desktop and control OpenRC services are `heurism-desktop` and
+`heurism-control`; root SSH and `companion-watch` stay independent.
 
 ## Limits that matter
 

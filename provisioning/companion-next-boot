@@ -4,7 +4,7 @@ set -eu
 case "${1:-}" in
     stable) pending=0;;
     rescue) pending=1;;
-    *) echo 'Usage: companion-next-boot stable|rescue [--reboot]' >&2; exit 1;;
+    *) echo 'Usage: heurism-next-boot stable|rescue [--reboot]' >&2; exit 1;;
 esac
 [ "$#" -le 2 ] || exit 1
 [ "$#" -eq 1 ] || [ "$2" = --reboot ] || exit 1

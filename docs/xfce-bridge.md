@@ -27,7 +27,7 @@ opens the C shell through its own PTY. Thunar and Mousepad use the same UID-1000
 home as other desktop apps. Firefox and Onboard remain Alpine applications.
 
 For recovery, a root administrator can place the single word `native` in
-`/etc/companion/native-session-mode` and restart `companion-desktop`; this
+`/etc/companion/native-session-mode` and restart `heurism-desktop`; this
 selects the original C workspace and dock. Removing the file restores Xfce.
 Use the VM installer on `CompanionDev` and the exact-DMI guarded Dell installer
 for versioned releases. Root SSH and `companion-watch` are independent of the

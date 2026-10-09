@@ -21,8 +21,8 @@ cleanup() {
 }
 trap cleanup EXIT
 test -b "${loop}p1" && test -b "${loop}p2"
-mkfs.vfat -F 32 -n COMPANION "${loop}p1"
-mkfs.ext4 -q -L companion-root "${loop}p2"
+mkfs.vfat -F 32 -n HEURISM "${loop}p1"
+mkfs.ext4 -q -L heurism-root "${loop}p2"
 mount "${loop}p2" "$root"
 base=alpine-minirootfs-3.24.2-x86_64.tar.gz
 url=https://dl-cdn.alpinelinux.org/alpine/v3.24/releases/x86_64/$base
@@ -42,7 +42,7 @@ chroot "$root" apk add alpine-base linux-lts grub-efi openssh eudev eudev-openrc
     xorg-server xf86-input-libinput xf86-video-fbdev xinit xauth xinput xrandr xprop xwd xdotool xvfb \
     openbox xterm font-dejavu python3 python3-tkinter dbus dbus-openrc pulseaudio pulseaudio-utils \
     alsa-utils alsa-ucm-conf firefox onboard wpa_supplicant iw efibootmgr util-linux pciutils usbutils x11vnc
-printf 'companion-vm\n' > "$root/etc/hostname"
+printf 'heurism-vm\n' > "$root/etc/hostname"
 printf '{"platform":"hyperv-dev"}\n' > "$root/etc/companion/platform.json"
 chmod 644 "$root/etc/companion/platform.json"
 cat > "$root/etc/network/interfaces" <<'EOF'
@@ -68,7 +68,7 @@ cat > "$root/boot/grub/grub.cfg" <<EOF
 set timeout_style=hidden
 set timeout=1
 set default=0
-menuentry "Companion" {
+menuentry "Heurism" {
     search --no-floppy --fs-uuid --set=root $uuid
     linux /boot/vmlinuz-lts root=UUID=$uuid rootfstype=ext4 ro quiet video=hyperv_fb:1280x800
     initrd /boot/initramfs-lts
@@ -110,4 +110,4 @@ cleanup
 trap - EXIT
 qemu-img convert -f raw -O vhdx -o subformat=dynamic "$stage/guest.raw" "$stage/companion-dev.vhdx"
 sha256sum "$stage/companion-dev.vhdx" > "$stage/companion-dev.vhdx.sha256"
-echo COMPANION_VM_IMAGE_READY
+echo HEURISM_VM_IMAGE_READY

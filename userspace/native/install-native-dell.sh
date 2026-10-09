@@ -10,6 +10,13 @@ test "$(id -u)" = 0
 test "$(cat /sys/class/dmi/id/sys_vendor)" = 'Dell Inc.'
 test "$(cat /sys/class/dmi/id/product_name)" = 'Inspiron 7506 2n1'
 test ! -e /etc/companion/platform.json
+test ! -L "$stage"
+test -d "$stage"
+test "$(stat -c %u "$stage")" = 0
+test "$(stat -c %a "$stage")" = 700
+test -z "$(find "$stage" -maxdepth 1 ! -user root -print -quit)"
+test -z "$(find "$stage" -maxdepth 1 -type l -print -quit)"
+test -z "$(find "$stage" -maxdepth 1 -type f \( -perm -020 -o -perm -002 \) -print -quit)"
 exec 9>/run/heurism-native-dell-install.lock
 flock -n 9 || { echo 'A Dell native install is already running' >&2; exit 1; }
 sha256sum -c "$protected" >/dev/null
@@ -37,7 +44,7 @@ if [ "${1:-}" = assemble ]; then
     done
     ln "$release/heurism-app" "$release/heurism-files"
     ln "$release/heurism-app" "$release/heurism-editor"
-    for script in session.sh client.sh user-session.sh xfce-power-panel.sh control.initd desktop.initd; do
+    for script in session.sh client.sh user-session.sh xfce-power-panel.sh control.initd desktop.initd desktop-heurism.initd; do
         install -m 755 "$stage/$script" "$release/$script"
     done
     install -m 644 "$stage/openbox.xml" "$release/openbox.xml"
@@ -49,7 +56,7 @@ if [ "${1:-}" = assemble ]; then
         sha256sum heurism-sh heurism-terminal heurism-control heurismctl \
             heurism-desktop heurism-app heurism-files heurism-editor \
             heurism-session-config heurism-release session.sh client.sh \
-            user-session.sh xfce-power-panel.sh control.initd desktop.initd openbox.xml \
+            user-session.sh xfce-power-panel.sh control.initd desktop.initd desktop-heurism.initd openbox.xml \
             heurism-settings.desktop heurism-terminal.desktop heurism-power.desktop \
             xfce4-power-manager.desktop >hashes.sha256
     )
@@ -78,16 +85,25 @@ else
 fi
 case "$previous" in "$root"/releases/*|"$legacy_root"/releases/*) ;; *) echo 'Unexpected current release' >&2; exit 1 ;; esac
 test -x /opt/companion/desktop/session.sh
+control=companion-control
+desktop=companion-desktop
+desktop_script=desktop.initd
+if [ -L /etc/runlevels/default/heurism-control ] &&
+   [ -L /etc/runlevels/default/heurism-desktop ]; then
+    control=heurism-control
+    desktop=heurism-desktop
+    desktop_script=desktop-heurism.initd
+fi
 backup=/var/lib/companion/native-dell-init-backup-$(date -u +%Y%m%dT%H%M%SZ)-$$
 created_links=
 install -d -m 700 "$backup"
-cp -p /etc/init.d/companion-control "$backup/control.initd"
-cp -p /etc/init.d/companion-desktop "$backup/desktop.initd"
+cp -p "/etc/init.d/$control" "$backup/control.initd"
+cp -p "/etc/init.d/$desktop" "$backup/desktop.initd"
 printf '%s\n' "$previous" >"$backup/previous-release"
 printf '%s\n' "$candidate" >"$backup/candidate-release"
 
 stop_desktop() {
-    rc-service companion-desktop stop 9>&- >/dev/null 2>&1 || true
+    rc-service "$desktop" stop 9>&- >/dev/null 2>&1 || true
     if [ -f /tmp/.X0-lock ]; then
         pid=$(tr -d ' ' </tmp/.X0-lock)
         case "$pid" in ''|*[!0-9]*) return 1 ;; esac
@@ -106,9 +122,9 @@ restore() {
     trap - EXIT HUP INT TERM
     for program in $created_links; do rm -f "/usr/local/bin/$program"; done
     stop_desktop || true
-    rc-service companion-control stop 9>&- >/dev/null 2>&1 || true
-    install -m 755 "$backup/control.initd" /etc/init.d/companion-control
-    install -m 755 "$backup/desktop.initd" /etc/init.d/companion-desktop
+    rc-service "$control" stop 9>&- >/dev/null 2>&1 || true
+    install -m 755 "$backup/control.initd" "/etc/init.d/$control"
+    install -m 755 "$backup/desktop.initd" "/etc/init.d/$desktop"
     case "$previous" in
         "$root"/releases/*)
             rm -f "$root/current.rollback"
@@ -116,20 +132,20 @@ restore() {
             mv -fT "$root/current.rollback" "$root/current" ;;
         "$legacy_root"/releases/*) rm -f "$root/current" ;;
     esac
-    rc-service companion-control start 9>&-
-    rc-service companion-desktop start 9>&-
+    rc-service "$control" start 9>&-
+    rc-service "$desktop" start 9>&-
     echo 'C activation failed; previous desktop and control restored' >&2
 }
 trap restore EXIT HUP INT TERM
 stop_desktop
-rc-service companion-control stop 9>&-
-install -m 755 "$candidate/control.initd" /etc/init.d/companion-control
-install -m 755 "$candidate/desktop.initd" /etc/init.d/companion-desktop
+rc-service "$control" stop 9>&-
+install -m 755 "$candidate/control.initd" "/etc/init.d/$control"
+install -m 755 "$candidate/$desktop_script" "/etc/init.d/$desktop"
 rm -f "$root/current.next"
 ln -s "$candidate" "$root/current.next"
 mv -fT "$root/current.next" "$root/current"
-rc-service companion-control start 9>&-
-rc-service companion-desktop start 9>&-
+rc-service "$control" start 9>&-
+rc-service "$desktop" start 9>&-
 ready=0
 for attempt in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20; do
     if "$candidate/heurism-release" health >/dev/null 2>&1; then
@@ -141,8 +157,8 @@ done
 test "$ready" = 1
 "$candidate/heurism-release" verify "$candidate"
 sha256sum -c "$protected" >/dev/null
-rc-service companion-control status
-rc-service companion-desktop status
+rc-service "$control" status
+rc-service "$desktop" status
 rc-service companion-watch status
 rc-service sshd status
 for program in heurism-sh heurism-terminal heurismctl heurism-release; do

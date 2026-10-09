@@ -3,7 +3,7 @@ set -eu
 mkdir -p /var/lib/companion
 report=/var/lib/companion/audit.txt
 {
-    echo 'Companion hardware audit (read-only observations)'
+    echo 'Heurism hardware audit (read-only observations)'
     date -u
     uname -a
     for field in sys_vendor product_name product_version board_vendor board_name bios_vendor bios_version bios_date; do

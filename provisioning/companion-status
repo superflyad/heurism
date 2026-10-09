@@ -2,23 +2,23 @@
 echo
 root_source=$(findmnt -n -o SOURCE /)
 case "$root_source" in
-    /dev/*) echo 'COMPANION MANAGEMENT 0.1'; echo "Installed root: $root_source" ;;
-    *) echo 'COMPANION PROVISIONING 0.1' ;;
+    /dev/*) echo 'HEURISM MANAGEMENT'; echo "Installed root: $root_source" ;;
+    *) echo 'HEURISM PROVISIONING' ;;
 esac
-echo 'Linux maintenance/installation environment; native Companion kernel pending.'
+echo 'Alpine Linux and Heurism management environment.'
 echo
 ip -4 -o addr show scope global | awk '{print "Address: " $2 " " $4}'
 echo 'Remote access: root SSH, authorized key only.'
 ssh-keygen -lf /etc/ssh/ssh_host_ed25519_key.pub 2>/dev/null || true
 echo
 echo 'Commands:'
-echo '  companion-wifi          Connect Wi-Fi locally (password stays out of chat)'
-echo '  companion-status        Show addresses and host fingerprint'
-echo '  companion-audit         Refresh hardware report'
-echo '  companion-install       Show internal-disk install instructions'
+echo '  heurism-wifi            Connect Wi-Fi locally (password stays out of chat)'
+echo '  heurism-status          Show addresses and host fingerprint'
+echo '  heurism-audit           Refresh hardware report'
+echo '  heurism-next-boot       Select stable or rescue boot'
 echo '  poweroff / reboot'
 echo
-echo 'Reports: /var/lib/companion/audit.txt'
+echo 'Reports: /var/lib/companion/audit.txt (existing management state)'
 case "$root_source" in
     /dev/*) echo 'Running from the installed disk. Motherboard firmware is unchanged.' ;;
     *) echo 'No internal disk or motherboard firmware is changed by starting this USB.' ;;

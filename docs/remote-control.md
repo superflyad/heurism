@@ -7,7 +7,7 @@ local network. The client private key stays in this workspace's ignored
 For ordinary commands or reconnection after a reboot:
 
 ```powershell
-python tools/dell.py --wait 180 --command 'id; findmnt /; companion-status'
+python tools/dell.py --wait 180 --command 'id; findmnt /; heurism-status'
 ```
 
 The tool first tries the last known address. If necessary, it scans TCP port 22
@@ -16,6 +16,9 @@ client key, root UID and target hostname before using a discovered address. It
 stores the new address and boot ID under `artifacts/targets/dell.json`. Remote
 commands execute once: the tool does not automatically retry a command that may
 already have changed the system. `--timeout` sets the command's execution limit.
+The installed hostname is `heurism-dell`; the helper also recognizes the old
+hostname during rollback, but still requires the same pinned SSH host key and
+authorized root key.
 `--after-boot <previous-boot-id>` requires a changed boot ID before executing the
 command, preventing a fast connection to the old system from falsely verifying
 a scheduled reboot. SSH can become available before every startup service is
@@ -49,7 +52,7 @@ remained unreachable for 25 seconds before the packet and returned about eight
 seconds afterward. A local wake request can be sent using:
 
 ```powershell
-python tools/dell.py --wake --wait 180 --command 'companion-status'
+python tools/dell.py --wake --wait 180 --command 'heurism-status'
 ```
 
 This verifies wake from Linux `s2idle` on the current AC/Ethernet setup. It does

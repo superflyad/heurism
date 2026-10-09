@@ -22,7 +22,7 @@ parser = argparse.ArgumentParser(description=__doc__)
 parser.add_argument('--address', help='Try this address first')
 parser.add_argument('--wait', type=int, default=0, help='Seconds to wait for trusted access')
 parser.add_argument('--timeout', type=int, default=30, help='Command execution timeout')
-parser.add_argument('--command', default='companion-status')
+parser.add_argument('--command', default='heurismctl status')
 parser.add_argument('--wake', action='store_true', help='Send a local Wake-on-LAN packet (firmware support required)')
 parser.add_argument('--after-boot', help='Wait for a boot ID different from this value')
 args = parser.parse_args()
@@ -50,7 +50,7 @@ ssh = ['ssh', '-i', str(identity / 'companion_client_ed25519'),
 def probe(address):
     try:
         result = subprocess.run(ssh + ['root@' + address,
-            'test "$(cat /etc/hostname)" = companion-dell && test "$(id -u)" = 0 && cat /proc/sys/kernel/random/boot_id'],
+            'case "$(cat /etc/hostname)" in companion-dell|heurism-dell) ;; *) exit 1;; esac; test "$(id -u)" = 0 && cat /proc/sys/kernel/random/boot_id'],
             capture_output=True, text=True, timeout=6, creationflags=0x08000000)
         if result.returncode == 0:
             return result.stdout.strip()

@@ -19,7 +19,7 @@ while :; do
         fi
         dhcppid="/run/companion/dhcp-$interface.pid"
         if ! { [ -r "$dhcppid" ] && kill -0 "$(cat "$dhcppid")" 2>/dev/null; }; then
-            udhcpc -i "$interface" -b -t 5 -T 2 -x hostname:companion-dell \
+            udhcpc -i "$interface" -b -t 5 -T 2 -x hostname:heurism-dell \
                 -p "$dhcppid" >"/run/companion/dhcp-$interface.log" 2>&1 || true
         fi
     done

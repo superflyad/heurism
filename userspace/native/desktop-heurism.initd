@@ -1,0 +1,13 @@
+#!/sbin/openrc-run
+description="Heurism native graphical workspace"
+supervisor=supervise-daemon
+command=/opt/heurism/native/current/session.sh
+respawn_delay=5
+respawn_max=3
+respawn_period=60
+output_log=/var/log/heurism-desktop.log
+error_log=/var/log/heurism-desktop.log
+depend() {
+    need localmount heurism-control
+    after companion-welcome
+}

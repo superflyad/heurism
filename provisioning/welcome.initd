@@ -1,11 +1,11 @@
 #!/sbin/openrc-run
-description="Prepare the Companion local welcome screen"
+description="Prepare the Heurism local welcome screen"
 depend() {
     need localmount
     after companion companion-watch companion-boot-health
 }
 start() {
-    ebegin "Preparing Companion screen"
+    ebegin "Preparing Heurism screen"
     /etc/companion/bin/companion-welcome
     eend $?
 }

@@ -278,7 +278,7 @@ def main():
     parser.add_argument('action', choices=['inventory', 'build', 'create', 'replace-disk', 'start', 'status', 'guest', 'wait', 'publish', 'capture', 'console', 'checkpoint', 'reset', 'restore'])
     parser.add_argument('--command')
     parser.add_argument('--snapshot', default='Companion-C-runtime-ready')
-    parser.add_argument('--name', default='companion-vm')
+    parser.add_argument('--name', default='heurism-vm')
     parser.add_argument('--surface', choices=['root', 'shell'], default='root')
     parser.add_argument('--after-boot')
     parser.add_argument('--require-ui', action='store_true')

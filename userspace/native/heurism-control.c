@@ -265,8 +265,8 @@ static bool verified_dell_boot(bool restore_order) {
         !command_output(boot_command, output, sizeof output) ||
         strstr(output, "BootNext:") ||
         !line_value(output, "BootOrder: ", order, sizeof order) ||
-        /* Boot0005 retains the verified firmware label from before the rename. */
-        !boot_entry(output, "0005", "\\EFI\\alpine\\grubx64.efi", "Companion", "HD(") ||
+        !(boot_entry(output, "0005", "\\EFI\\alpine\\grubx64.efi", "Companion Management\tHD(", "HD(") ||
+          boot_entry(output, "0005", "\\EFI\\alpine\\grubx64.efi", "Heurism Management\tHD(", "HD(")) ||
         !boot_entry(output, "0000", "\\EFI\\Boot\\BootX64.efi", "NVMe", "HD("))
         return false;
     char copy[256];

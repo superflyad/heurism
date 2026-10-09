@@ -26,14 +26,14 @@ click within ten seconds. The disabled Xfce Log Out menu entry is replaced in
 the user session.
 The optional original C workspace can be selected by placing `native` in
 `/etc/companion/native-session-mode` and restarting the currently named
-`companion-desktop` OpenRC service; removing
+`heurism-desktop` OpenRC service; removing
 that file selects Xfce again. The C control socket and authenticated root SSH
 stay separate from either user session. Xfce power manager autostart is hidden
 so its controls do not bypass Heurism's checked power path. See
 [xfce-bridge.md](../../docs/xfce-bridge.md).
 
 The active VM release is selected by `/opt/heurism/native/current` and is
-`/opt/heurism/native/releases/heurism-os-20261009T011559Z-4876`.
+`/opt/heurism/native/releases/heurism-os-20261009T015910Z-3115`.
 `install-native-vm.sh assemble` builds a versioned, hashed candidate;
 `activate` replaces the VM's OpenRC desktop and control scripts, waits for C UI
 health, and restores the previous scripts and release on failure. The native
@@ -41,16 +41,18 @@ session can fall back to the sealed legacy UI if its own X startup fails. Root
 SSH and `companion-watch` run independently of the desktop. Do not deploy this
 VM installer on the Dell. The Dell has its own exact-DMI installer,
 `install-native-dell.sh`, and the active sealed release
-`/opt/heurism/native/releases/heurism-os-dell-20261009T011703Z-5716`. The Dell
+`/opt/heurism/native/releases/heurism-os-dell-20261009T020254Z-7718`. The Dell
 installer's `assemble` action does not switch services. `activate` changes
 only the desktop/control OpenRC scripts and native release symlink, with a
 20-second health gate and automatic restoration of the previous scripts and
 release if that gate fails. The legacy runtime remains sealed for recovery;
 SSH and `companion-watch` remain independent. Ethernet is the active Dell
 management link. Wi-Fi association is deferred at the owner's direction.
-The verified boot loader, OpenRC service names, `companion-ui` account,
-management hostnames, protected manifests and sealed Python recovery retain
-their installed identifiers during this migration. See
+The verified boot loader, `companion-watch`, `companion-ui` account,
+protected manifests and sealed Python recovery retain their installed
+identifiers. The active desktop/control OpenRC services and hostnames now use
+Heurism. The root staging directory is mode `0700`, and installers reject
+writable staged inputs. See
 [heurism-migration.md](../../docs/heurism-migration.md).
 
 Build in the VM with `make` and Alpine's `build-base`, `libxft-dev`,
