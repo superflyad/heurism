@@ -1,5 +1,21 @@
 # Current product direction
 
+On 2026-10-09 the owner physically found the Dell stalled at its logo after
+the checked C restart, with the laptop throttling. Powering it off and on
+restored boot `30913da8-5441-41d6-967f-020680316816`, pinned SSH, Xfce,
+control/watch and protected hashes. Persistent syslog shows orderly OpenRC
+shutdown at 15:57 UTC and no Linux startup until 23:20 UTC after the owner's
+power cycle. The precise preboot cause is unknown; do not attribute it to the
+C terminal or claim it fixed. The earlier banner-suppression change left Dell
+BIOS `WarningsAndErr=PromptWrnErr`, which Dell documents can halt POST on a
+warning. This was reverted through the supported BIOS interface to the prior
+`ContWrn` on the live boot; readback passed and `pending_reboot=1`. The change
+has not been validated by a reboot. The headless banner may return. Do not
+perform an unattended Dell reboot or poweroff. The host remote-power guard
+remains active; a validation reboot requires a person at the Dell who can
+observe and power-cycle it. Keep the SSD management and recovery path intact.
+See `docs/dell-terminal-20261009.md`.
+
 The owner clarified that Heurism is not ready for a public OS release and asked
 to focus on making the OS excellent. On 2026-10-09 a local C terminal iteration
 added 512-line bounded scrollback with Shift+PageUp/PageDown and wheel
@@ -399,8 +415,10 @@ for backups and evidence. A native kernel is implemented and tested in VM,
 but is not installed or selected on the Dell. Linux root SSH will not coexist with an early
 native kernel; retain management and validate recovery before unattended native runs.
 
-At the owner's request for a clean startup, WarningsAndErr is now PromptWrnErr
-to remove Dell's headless banner. PowerWarn and DockWarningsEnMsg remain Disabled.
+At the owner's request for a clean startup, WarningsAndErr was set to PromptWrnErr
+to remove Dell's headless banner. That choice was later reverted to ContWrn
+after the logo stall described at the top of this file. PowerWarn and
+DockWarningsEnMsg remain Disabled.
 Normal reboot returned healthy root on boot 7dc09e62-a246-408d-a0af-7aba72e2001c,
 and the owner confirmed the banner absent. Default boot/driver orders are restored,
 BootNext absent; protected EFI/kernel hashes unchanged. Unsuppressed future

@@ -10,7 +10,8 @@ def validate_remote_power(command, local_recovery_ready=False):
         command, re.I)
     if power and not local_recovery_ready:
         raise ValueError('Remote Dell power action blocked: an earlier checked reboot '
-                         'did not return to SSH. Use --local-recovery-ready only while '
+                         'stalled at the Dell logo and required a physical power cycle. '
+                         'Use --local-recovery-ready only while '
                          'a person can inspect the Dell and restore it physically.')
 
 def validate_command(command):

@@ -145,3 +145,10 @@ journal committed `companion_pending=0`. All six protected file hashes passed.
 BootCurrent `0005`, BootOrder restored `0005,0000`, DriverOrder `0000,0001`,
 BootNext absent. Evidence: `artifacts/startup/headless-banner-reboot.txt`.
 The owner confirmed the headless banner was not visible on this reboot.
+
+On 2026-10-09 a later checked reboot stalled at the Dell logo and required a
+physical power cycle. The precise preboot cause remains unknown. Because Dell
+documents that `PromptWrnErr` can stop POST on warnings, the owner-prioritized
+remote-access recovery led to restoring the earlier `ContWrn` setting. Readback
+passed with `pending_reboot=1`; no validation reboot has occurred yet. The
+headless banner may return. See [the incident record](dell-terminal-20261009.md).

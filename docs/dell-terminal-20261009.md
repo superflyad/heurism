@@ -73,6 +73,30 @@ remains in place; no further reboot was attempted.
 The read-only C `power-check` passed with the appended NIC entries. The speaker
 sink was present but muted; this check does not establish audible output.
 
+## Firmware-logo stall and mitigation
+
+The owner subsequently reported finding the Dell stuck at its opening logo
+while the laptop was throttling. They turned power off and on; it then booted
+normally. The persistent syslog shows orderly OpenRC shutdown at 15:57:26 UTC
+and no Linux startup log until 23:20:27 UTC after that physical power cycle.
+There is no evidence of an intervening Linux boot. This places the observed
+stall before the installed services could restore SSH. The exact firmware or
+early-boot fault, and any warning text hidden by the logo, remain unknown.
+The terminal release installer changed no EFI, firmware or kernel file; the
+reboot exercised the existing preboot path.
+
+An earlier cosmetic change had set Dell BIOS `WarningsAndErr=PromptWrnErr` to
+hide its headless banner. [Dell states](https://www.dell.com/support/kbdoc/en-us/000139731/what-the-headless-operation-mode-active-post-message-means-and-how-to-stop-it-appearing-during-start-up)
+that this setting stops POST on warnings or errors. It is a plausible
+contributor, not a proven cause of this particular blank-logo stall. On the
+recovered boot, `companion-bios set WarningsAndErr ContWrn` restored the prior
+continue-on-warning value through Dell's supported firmware interface. The
+tool logged the old and new values; readback is `ContWrn` and
+`pending_reboot=1`. The sealed release, UI, SSH and watch remained healthy on
+the same boot. The new policy has **not** yet been tested through a restart;
+the headless banner may return, and an error can still halt POST. The
+remote-power guard stays in place. No reboot was initiated for this change.
+
 ## Continued VM work
 
 The later terminal source now shows `[scrollback N/512]` in the window title
