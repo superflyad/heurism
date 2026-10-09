@@ -1,18 +1,26 @@
 # Current product direction
 
-On 2026-10-09 a dual-name EFI bootstrap candidate was built for the Heurism
-NVRAM variable migration. Nineteen host and six isolated OVMF cases passed;
-the candidate is staged only under
-`/var/lib/companion/firmware/heurism-nv-candidate/dual-name.efi` on the Dell.
-No new physical NVRAM variable was created and the active EFI driver, protected
-manifest and boot order were not changed. The new reader accepts the exact
-pinned image under `HeurismExtensionImage01`, retains the old
-`CompanionExtensionImage01` lookup and SSD fallback, and reports path 3 for a
-verified Heurism variable. The payload ABI and volatile marker still use the
-legacy name. Do not activate the physical EFI change while no local power-button
-recovery is available; SSH cannot recover a preboot hang. See
-`docs/heurism-nv-migration.md`. The staged `stage-variable.sh` passed a
-read-only physical preflight; its `create` action has not run.
+On 2026-10-09 the dual-name EFI bootstrap was activated on the physical Dell
+after 19 host and six isolated OVMF cases passed. The owner confirmed local
+power-button access. The new `HeurismExtensionImage01` variable has attributes
+7 and matches the 2,048-byte legacy payload exactly; the old
+`CompanionExtensionImage01` variable remains intact. A checked reboot under
+the old driver returned healthy boot `acb8eaf4-8627-4751-b12c-ef838ec56122`.
+The guarded activation backed up the old SSD driver and six-file manifest,
+then installed dual-name driver SHA256
+`a215f4143742e4263577942e1886b5546375bf08777f11903196e0f99c78ff31`.
+Fresh checked boot `1ae2b1d9-a8ce-4467-97be-e952e7198888` reports volatile
+marker path 3 with zero read/load/start/service errors: it executed the image
+read from the Heurism-named NVRAM variable. Root SSH/watch/control, Xfce
+release/UI, speaker sink and protected manifest are healthy. BootCurrent
+`0005`, BootOrder restored
+to `0005,0000` after verifying Dell-appended NIC entries, DriverOrder
+`0000,0001`, BootNext absent. The original SSD driver is backed up at
+`/boot/efi/EFI/companion/companionextx64.before-heurism.efi` and under
+`/var/lib/companion/firmware/heurism-nv-candidate/`. The EFI bootstrap still
+depends on the SSD; the payload protocol ABI and volatile marker retain their
+legacy names. Do not delete the legacy variable without a separate recovery
+migration. See `docs/heurism-nv-migration.md`.
 
 The owner renamed the OS product to **Heurism** and asked for a deep C runtime
 migration. Active VM and Dell releases use `/opt/heurism/native/current`,
@@ -22,7 +30,7 @@ migration. Active VM and Dell releases use `/opt/heurism/native/current`,
 The hostnames are `heurism-vm` and `heurism-dell`; the active C services are
 `heurism-control` and `heurism-desktop`. The old desktop/control service files
 remain disabled for rollback. Dell fresh boot
-`d5e85973-2087-4fc9-ab40-d43251868a3a` passed release/UI health, C power,
+`1ae2b1d9-a8ce-4467-97be-e952e7198888` passed release/UI health, C power,
 root SSH/watch/control, six protected hashes and default SSD boot state after
 the verified auto-created USB NIC entries were removed from BootOrder.
 BootCurrent is `0005`, BootOrder `0005,0000`, DriverOrder `0000,0001`, BootNext

@@ -1,5 +1,9 @@
 # Automatic startup from the motherboard variable
 
+The current Dell bootstrap also accepts and prefers the Heurism variable.
+See [the 2026-10-09 migration](heurism-nv-migration.md) for the live startup
+state; the observations below record the original Companion-only rollout.
+
 On 2026-09-27, a normal Dell reboot automatically loaded and executed the
 verified Companion extension from its nonvolatile motherboard variable.
 Trusted root SSH returned, the management watcher started, and the new boot

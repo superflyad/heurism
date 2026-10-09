@@ -10,7 +10,8 @@ import sys
 repo = Path(__file__).resolve().parents[1]
 global_guid = '8be4df61-93ca-11d2-aa0d-00e098032b8c'
 owner = 'CompanionExtensionImage01-1d8ce97b-55e6-4b2e-9276-bb1e9b6615a1'
-command = r'''for f in /sys/firmware/efi/efivars/Boot*-8be4df61-93ca-11d2-aa0d-00e098032b8c /sys/firmware/efi/efivars/Driver*-8be4df61-93ca-11d2-aa0d-00e098032b8c /sys/firmware/efi/efivars/CompanionExtensionImage01-1d8ce97b-55e6-4b2e-9276-bb1e9b6615a1; do
+heurism_owner = 'HeurismExtensionImage01-1d8ce97b-55e6-4b2e-9276-bb1e9b6615a1'
+command = r'''for f in /sys/firmware/efi/efivars/Boot*-8be4df61-93ca-11d2-aa0d-00e098032b8c /sys/firmware/efi/efivars/Driver*-8be4df61-93ca-11d2-aa0d-00e098032b8c /sys/firmware/efi/efivars/CompanionExtensionImage01-1d8ce97b-55e6-4b2e-9276-bb1e9b6615a1 /sys/firmware/efi/efivars/HeurismExtensionImage01-1d8ce97b-55e6-4b2e-9276-bb1e9b6615a1; do
 test -f "$f" || continue
 printf '%s\t' "${f##*/}"
 base64 "$f" | tr -d '\n'
@@ -35,6 +36,9 @@ for line in read(command).splitlines():
                        'attributes': int.from_bytes(raw[:4], 'little')}
 payload = base64.b64decode(variables[owner]['base64'])[4:]
 assert hashlib.sha256(payload).hexdigest() == 'b89ffa86d43a68a5296ed762702b25617d805e29a15f1f596dc6aed2f0d0151a'
+if heurism_owner in variables:
+    assert base64.b64decode(variables[heurism_owner]['base64']) == base64.b64decode(variables[owner]['base64'])
+    assert variables[heurism_owner]['attributes'] == 7
 def words(name):
     raw = base64.b64decode(variables[name+'-'+global_guid]['base64'])[4:]
     assert len(raw) % 2 == 0
@@ -53,8 +57,10 @@ output.mkdir(parents=True, exist_ok=False)
 snapshot = {'captured_utc': datetime.now(timezone.utc).isoformat(),
             'scope': __doc__, 'variables': variables, 'health': health,
             'boot_order': words('BootOrder'), 'driver_order': words('DriverOrder'),
-            'owner_payload_sha256': hashlib.sha256(payload).hexdigest()}
+            'owner_payload_sha256': hashlib.sha256(payload).hexdigest(),
+            'heurism_owner_verified': heurism_owner in variables}
 (output/'snapshot.json').write_text(json.dumps(snapshot, indent=2))
 print(json.dumps({'backup': str(output/'snapshot.json'), 'variable_count': len(variables),
                   'boot_id': lines[0], 'owner_payload_verified': True,
+                  'heurism_owner_verified': heurism_owner in variables,
                   'boot_and_recovery_files_verified': True}, indent=2))
