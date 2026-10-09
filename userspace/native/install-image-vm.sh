@@ -21,11 +21,12 @@ for program in heurism-sh heurism-terminal heurism-control heurismctl \
 done
 ln "$release/heurism-app" "$release/heurism-files"
 ln "$release/heurism-app" "$release/heurism-editor"
-for script in session.sh client.sh user-session.sh xfce-power-panel.sh \
+for script in session.sh client.sh user-session.sh xfce-power-panel.sh heurism-look.sh \
     control.initd desktop-heurism.initd; do
     install -m 755 "$source/$script" "$release/$script"
 done
-for item in openbox.xml heurism-settings.desktop heurism-terminal.desktop \
+for item in openbox.xml heurism-wallpaper.svg heurism-mark.svg \
+    heurism-settings.desktop heurism-terminal.desktop \
     heurism-power.desktop xfce4-power-manager.desktop; do
     install -m 644 "$source/$item" "$release/$item"
 done
@@ -34,7 +35,8 @@ done
     sha256sum heurism-sh heurism-terminal heurism-control heurismctl \
         heurism-desktop heurism-app heurism-files heurism-editor \
         heurism-session-config heurism-release session.sh client.sh \
-        user-session.sh xfce-power-panel.sh control.initd \
+        user-session.sh xfce-power-panel.sh heurism-look.sh \
+        heurism-wallpaper.svg heurism-mark.svg control.initd \
         desktop-heurism.initd openbox.xml heurism-settings.desktop \
         heurism-terminal.desktop heurism-power.desktop \
         xfce4-power-manager.desktop > hashes.sha256

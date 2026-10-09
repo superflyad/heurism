@@ -92,31 +92,8 @@ if [ "$ready" = 0 ]; then
     native_session replace
 fi
 sh "$release/xfce-power-panel.sh" >>"$state/xfce-panel.log" 2>&1
-if [ -r /usr/share/heurism/wallpaper.svg ]; then
-    for attempt in 1 2 3 4 5; do
-        if xdotool search --class xfdesktop >/dev/null 2>&1; then
-            break
-        fi
-        sleep 1
-    done
-    monitor=$(xrandr --listmonitors 2>/dev/null | awk 'NR==2 {print $NF}')
-    case "$monitor" in
-        ''|*[!A-Za-z0-9_-]*) echo 'Cannot identify Xfce monitor for wallpaper' >&2 ;;
-        *)
-            backdrop=/backdrop/screen0/monitor${monitor}/workspace0
-            image=$(xfconf-query -c xfce4-desktop -p "$backdrop/last-image" 2>/dev/null || true)
-            if [ -z "$image" ]; then
-                xfconf-query -c xfce4-desktop -p "$backdrop/last-image" -n -t string \
-                    -s /usr/share/heurism/wallpaper.svg || true
-                xfconf-query -c xfce4-desktop -p "$backdrop/image-style" -n -t int -s 5 || true
-                image=/usr/share/heurism/wallpaper.svg
-            fi
-            if [ "$image" = /usr/share/heurism/wallpaper.svg ]; then
-                sleep 5
-                xfdesktop --reload >>"$state/xfce-session.log" 2>&1 || true
-            fi ;;
-    esac
-fi
+sh "$release/heurism-look.sh" >>"$state/xfce-look.log" 2>&1 ||
+    echo 'Heurism look could not be applied; Xfce remains usable' >&2
 umask 077
 resolved=$(readlink -f "$release")
 boot=$(cat /proc/sys/kernel/random/boot_id)

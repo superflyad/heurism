@@ -113,6 +113,12 @@ Use the [Dell daily-use pass](dell-daily-use-pass.md) to record physical results
   release, failed services, disk health, network state and recent errors in a
   simple local diagnostic view, with equivalent authenticated SSH commands.
 
+- [ ] **Set a repeatable performance baseline.** The VM visual pass removed
+  Xfce session helper leaks and passed one restart, but old and new `free -m`
+  readings came from different uptimes. Measure boot-to-ready, idle memory,
+  application launch and input latency under matched VM conditions before
+  claiming Heurism is faster. See the [visual pass](heurism-look.md).
+
 ## P1 — Make security a real system property
 
 - [ ] **Write a threat model for this Dell.** Cover physical theft, malicious

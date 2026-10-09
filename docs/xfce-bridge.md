@@ -35,6 +35,9 @@ session in either mode. The sealed Python/Tk release remains a deeper fallback.
 The active renamed releases and checked reboot evidence are recorded in
 [heurism-migration.md](heurism-migration.md). The evidence below is the earlier
 Xfce bridge baseline under its installed names.
+The [Heurism workspace visual pass](heurism-look.md) now supplies the VM's
+versioned wallpaper, menu mark and panel defaults while retaining this session
+and its recovery path.
 
 ## Verification on 2026-10-03
 

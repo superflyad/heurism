@@ -8,9 +8,26 @@ test -x /usr/bin/mousepad
 settings=${1:-/opt/heurism/native/current/heurism-desktop}
 test -x "$settings"
 stage=$(mktemp -d /tmp/heurism-xfce-test.XXXXXX)
+test_uid=$(id -u companion-ui)
+stop_stage_processes() {
+    signal=$1
+    for environment in /proc/[0-9]*/environ; do
+        test -r "$environment" || continue
+        pid=${environment#/proc/}
+        pid=${pid%/environ}
+        test "$(stat -c %u "/proc/$pid" 2>/dev/null || true)" = "$test_uid" || continue
+        if cat "$environment" 2>/dev/null | tr '\000' '\n' |
+           grep -Fxq "XDG_RUNTIME_DIR=$stage/run"; then
+            kill -"$signal" "$pid" 2>/dev/null || true
+        fi
+    done
+}
 cleanup() {
     kill "${session:-}" "${xserver:-}" 2>/dev/null || true
     wait "${session:-}" "${xserver:-}" 2>/dev/null || true
+    stop_stage_processes TERM
+    sleep 1
+    stop_stage_processes KILL
     rm -rf "$stage"
 }
 trap cleanup EXIT INT TERM

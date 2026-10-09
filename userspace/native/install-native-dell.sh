@@ -44,10 +44,11 @@ if [ "${1:-}" = assemble ]; then
     done
     ln "$release/heurism-app" "$release/heurism-files"
     ln "$release/heurism-app" "$release/heurism-editor"
-    for script in session.sh client.sh user-session.sh xfce-power-panel.sh control.initd desktop.initd desktop-heurism.initd; do
+    for script in session.sh client.sh user-session.sh xfce-power-panel.sh heurism-look.sh control.initd desktop.initd desktop-heurism.initd; do
         install -m 755 "$stage/$script" "$release/$script"
     done
     install -m 644 "$stage/openbox.xml" "$release/openbox.xml"
+    install -m 644 "$stage/heurism-wallpaper.svg" "$stage/heurism-mark.svg" "$release/"
     for entry in heurism-settings.desktop heurism-terminal.desktop heurism-power.desktop xfce4-power-manager.desktop; do
         install -m 644 "$stage/$entry" "$release/$entry"
     done
@@ -56,7 +57,8 @@ if [ "${1:-}" = assemble ]; then
         sha256sum heurism-sh heurism-terminal heurism-control heurismctl \
             heurism-desktop heurism-app heurism-files heurism-editor \
             heurism-session-config heurism-release session.sh client.sh \
-            user-session.sh xfce-power-panel.sh control.initd desktop.initd desktop-heurism.initd openbox.xml \
+            user-session.sh xfce-power-panel.sh heurism-look.sh heurism-wallpaper.svg heurism-mark.svg \
+            control.initd desktop.initd desktop-heurism.initd openbox.xml \
             heurism-settings.desktop heurism-terminal.desktop heurism-power.desktop \
             xfce4-power-manager.desktop >hashes.sha256
     )

@@ -113,11 +113,12 @@ def native_archive():
     with tarfile.open(archive, 'w:gz') as stream:
         for path in sorted(source.iterdir()):
             if not path.is_file() or not (path.name == 'Makefile' or
-                    path.suffix in ('.c', '.h', '.sh', '.initd', '.desktop', '.xml')):
+                    path.suffix in ('.c', '.h', '.sh', '.initd', '.desktop', '.xml', '.svg')):
                 continue
             info = stream.gettarinfo(str(path), arcname='native/'+path.name)
             info.uid = info.gid = 0
             info.mtime = 0
+            info.mode = 0o644
             data = path.read_bytes().replace(b'\r\n', b'\n')
             import io
             info.size = len(data)

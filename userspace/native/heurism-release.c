@@ -24,7 +24,8 @@ static const char *required[] = {
     "heurism-sh", "heurism-terminal", "heurism-control", "heurismctl",
     "heurism-desktop", "heurism-app", "heurism-files", "heurism-editor",
     "heurism-session-config", "heurism-release", "session.sh", "client.sh",
-    "user-session.sh", "xfce-power-panel.sh", "openbox.xml", "heurism-settings.desktop",
+    "user-session.sh", "xfce-power-panel.sh", "heurism-look.sh", "heurism-wallpaper.svg",
+    "heurism-mark.svg", "openbox.xml", "heurism-settings.desktop",
     "heurism-terminal.desktop", "heurism-power.desktop",
     "xfce4-power-manager.desktop"
 };
