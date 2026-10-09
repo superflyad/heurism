@@ -31,6 +31,8 @@ test result and rollback path. See the [architecture](architecture.md),
 
 ## P0 — Make the Dell dependable for daily work
 
+Use the [Dell daily-use pass](dell-daily-use-pass.md) to record physical results.
+
 - [ ] **Run an end-to-end human session.** From a cold boot, use only the Dell
   display and input to open Files, create/edit/save/reopen documents, move a
   file to Trash and restore it, browse and download, use Settings and Power,
