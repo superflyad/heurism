@@ -7,6 +7,9 @@ case "$stage" in /var/lib/companion-vm-build/*) ;; *) echo 'Invalid build direct
 test "$(id -u)" = 0
 test -f "$stage/desktop.tar.gz"
 test -f "$stage/client.pub"
+test "$(sha256sum "$stage/heurism-os-release" | cut -d ' ' -f 1)" = 4cb2272e2f85fe61c37fab906149fb8624035ef38847d5b5439ba8e1d7bbb367
+test "$(sha256sum "$stage/heurism-upstream-release" | cut -d ' ' -f 1)" = 1eb5561b4eae9962ff0f16ba7900cdc1f444535490f4863954e5bceab26beab3
+test "$(sha256sum "$stage/heurism-vm-packages.list" | cut -d ' ' -f 1)" = e1984fb7bf2be0544a6634bf9d03ebf13d5bd5c258dc6558997d13da54a43e60
 test ! -e "$stage/guest.raw"
 root="$stage/root"
 mkdir -p "$root"
@@ -38,10 +41,22 @@ mount --bind /dev "$root/dev"
 printf 'nameserver 1.1.1.1\nnameserver 8.8.8.8\n' > "$root/etc/resolv.conf"
 printf '%s\n' https://dl-cdn.alpinelinux.org/alpine/v3.24/main https://dl-cdn.alpinelinux.org/alpine/v3.24/community > "$root/etc/apk/repositories"
 chroot "$root" apk add linux-firmware-none
-chroot "$root" apk add alpine-base linux-lts grub-efi openssh eudev eudev-openrc \
-    xorg-server xf86-input-libinput xf86-video-fbdev xinit xauth xinput xrandr xprop xwd xdotool xvfb \
-    openbox xterm font-dejavu python3 python3-tkinter dbus dbus-openrc pulseaudio pulseaudio-utils \
-    alsa-utils alsa-ucm-conf firefox onboard wpa_supplicant iw efibootmgr util-linux pciutils usbutils x11vnc
+packages=()
+while IFS= read -r package || [ -n "$package" ]; do
+    case "$package" in ''|'#'*) continue ;; esac
+    [[ "$package" =~ ^[a-z0-9][a-z0-9+_.-]*$ ]] || { echo "Invalid package name: $package" >&2; exit 1; }
+    packages+=("$package")
+done < "$stage/heurism-vm-packages.list"
+test "${#packages[@]}" = 37
+chroot "$root" apk add "${packages[@]}"
+test -L "$root/etc/os-release"
+test "$(readlink "$root/etc/os-release")" = ../usr/lib/os-release
+grep -Fqx ID=alpine "$root/usr/lib/os-release"
+grep -Fqx VERSION_ID=3.24.2 "$root/usr/lib/os-release"
+rm "$root/etc/os-release"
+install -m 644 "$stage/heurism-os-release" "$root/etc/os-release"
+install -d -m 755 "$root/etc/heurism"
+install -m 644 "$stage/heurism-upstream-release" "$root/etc/heurism/upstream-release"
 printf 'heurism-vm\n' > "$root/etc/hostname"
 printf '{"platform":"hyperv-dev"}\n' > "$root/etc/companion/platform.json"
 chmod 644 "$root/etc/companion/platform.json"
@@ -103,7 +118,7 @@ for service in networking sshd dbus companion-watch companion-control companion-
     chroot "$root" rc-update add "$service" default
 done
 for service in mount-ro killprocs savecache; do chroot "$root" rc-update add "$service" shutdown; done
-chroot "$root" sh -c 'sha256sum /boot/vmlinuz-lts /boot/initramfs-lts /boot/grub/grub.cfg /boot/efi/EFI/BOOT/BOOTX64.EFI /etc/fstab /etc/network/interfaces /etc/ssh/sshd_config /etc/ssh/ssh_host_ed25519_key.pub /etc/init.d/sshd /etc/init.d/companion-watch /usr/local/sbin/companion-vm-watch /etc/companion/platform.json > /etc/companion/vm-protected.sha256'
+chroot "$root" sh -c 'sha256sum /boot/vmlinuz-lts /boot/initramfs-lts /boot/grub/grub.cfg /boot/efi/EFI/BOOT/BOOTX64.EFI /etc/fstab /etc/network/interfaces /etc/ssh/sshd_config /etc/ssh/ssh_host_ed25519_key.pub /etc/init.d/sshd /etc/init.d/companion-watch /usr/local/sbin/companion-vm-watch /etc/companion/platform.json /etc/os-release /etc/heurism/upstream-release > /etc/companion/vm-protected.sha256'
 chmod 644 "$root/etc/companion/vm-protected.sha256"
 sync
 cleanup

@@ -1,1 +1,3 @@
 tools/target/heurism-nv-*.sh text eol=lf
+platform/heurism/* text eol=lf
+tools/target/heurism-system-identity.sh text eol=lf

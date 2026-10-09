@@ -1,0 +1,40 @@
+# Direct package selection for the Heurism Hyper-V image.
+# One package name per line. linux-firmware-none is bootstrapped separately.
+# This profile describes the existing VM baseline.
+alpine-base
+linux-lts
+grub-efi
+openssh
+eudev
+eudev-openrc
+xorg-server
+xf86-input-libinput
+xf86-video-fbdev
+xinit
+xauth
+xinput
+xrandr
+xprop
+xwd
+xdotool
+xvfb
+openbox
+xterm
+font-dejavu
+python3
+python3-tkinter
+dbus
+dbus-openrc
+pulseaudio
+pulseaudio-utils
+alsa-utils
+alsa-ucm-conf
+firefox
+onboard
+wpa_supplicant
+iw
+efibootmgr
+util-linux
+pciutils
+usbutils
+x11vnc

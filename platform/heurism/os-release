@@ -1,0 +1,4 @@
+NAME=Heurism
+ID=heurism
+ID_LIKE=alpine
+PRETTY_NAME=Heurism

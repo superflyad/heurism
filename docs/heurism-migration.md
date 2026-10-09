@@ -1,7 +1,9 @@
 # Heurism naming migration
 
-Heurism is the product name. Alpine Linux remains the kernel and Unix base;
-Xfce 4.20 is the default desktop. Heurism owned runtime programs are C.
+Heurism is the operating system name. Its current Linux kernel and Unix base
+come from Alpine upstream packages; Xfce 4.20 is the default desktop.
+Heurism-owned runtime programs are C. The system identity and base work are
+recorded in [Heurism system base](heurism-system-base.md).
 
 ## Active releases
 

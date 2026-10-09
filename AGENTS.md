@@ -1,5 +1,21 @@
 # Current product direction
 
+On 2026-10-09 the owner clarified that Heurism is its own Linux distribution,
+built from upstream Linux and Alpine components, not merely an Alpine desktop
+theme. The live VM and Dell now report `ID=heurism`, `ID_LIKE=alpine` in
+`/etc/os-release`, while the packaged Alpine 3.24.2 `/usr/lib/os-release` and
+`apk` provenance remain intact. Both Heurism identity files are protected by
+the VM/Dell manifests. The checked VM fresh boot is
+`82e62200-48b6-44f5-9562-78f8c55ad056`; the checked Dell fresh boot is
+`4dc58594-e232-44f6-baa2-6998c17115cb`. Dell NVRAM path 3, C release,
+Xfce, SSH/watch/control, sound and protected checks remained healthy. Default
+BootOrder `0005,0000`, DriverOrder `0000,0001`, no BootNext. The VM image
+builder now consumes Heurism's checked direct-package profile, but no new image
+has been built or booted from this revision. It still starts from Alpine
+minirootfs and installs legacy Python/Tk before a later C release; close that
+build-time gap in the VM before promoting a system image to the Dell. See
+`docs/heurism-system-base.md`.
+
 On 2026-10-09 the dual-name EFI bootstrap was activated on the physical Dell
 after 19 host and six isolated OVMF cases passed. The owner confirmed local
 power-button access. The new `HeurismExtensionImage01` variable has attributes

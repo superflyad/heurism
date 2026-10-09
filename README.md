@@ -1,9 +1,13 @@
 # Heurism
 
-Heurism is an Alpine Linux based OS experience with C owned shell, terminal,
-settings, control service, and release verifier. Xfce supplies the established
-desktop session. Older installed boot and management interfaces retain their
-previous identifiers during migration.
+Heurism is our Linux distribution for the Dell and its development VM. It uses
+upstream Linux, Alpine packages and Unix tools while Heurism owns the system
+identity, VM package selection, startup integration, C shell and terminal, control
+service, desktop integration and release checks. Xfce currently supplies the
+established desktop session. Older installed boot and management interfaces
+retain their previous identifiers during migration. See the
+[system base record](docs/heurism-system-base.md) for what is owned today and
+what still comes from upstream.
 
 Development runs first in the [PrimeServer Hyper-V VM](docs/prime-vm.md),
 `CompanionDev`, with separate root SSH, versioned UI releases, host reset and
@@ -30,7 +34,7 @@ in place.
 
 The [provisioning USB](docs/provisioning-usb.md) now provides the path to root
 remote access, hardware auditing and a persistent management installation on
-the Dell. Alpine Linux is the retained kernel and hardware foundation for Heurism.
+the Dell. The installed kernel and drivers currently come from Alpine packages.
 The UEFI framebuffer experiment below remains available in its boot menu.
 
 The Dell's 512 GB SSD now contains the management system. Physical SSD boot
@@ -49,8 +53,8 @@ SSH. Its initial loader still depends on the SSD and includes an SSD fallback.
 A personal computer platform we can understand and control, using the Dell
 Inspiron 7506 2-in-1 as practice hardware (target 0). The aim is ownership of
 startup policy, system services, hardware controls, applications and interface.
-Linux supplies the kernel and device drivers. We are building the Heurism OS
-experience, not a Linux replacement. See the [architecture](docs/architecture.md)
+Linux supplies the kernel and device drivers. We are building and releasing the
+Heurism operating system around that foundation. See the [architecture](docs/architecture.md)
 and [product roadmap](docs/roadmap.md).
 
 The installed [startup presentation](docs/startup-presentation.md) hides GRUB

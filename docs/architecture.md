@@ -1,10 +1,13 @@
 # Architecture and ownership
 
-Heurism is a Linux-based OS experience and hardware control platform. Target 0
-is the Dell Inspiron 7506. Alpine Linux stays as the kernel, driver and base
-system foundation. Heurism owns the startup experience, service policy,
-interface, applications and hardware control workflows. Rebuilding Linux or
-its USB, networking, storage and graphics drivers is not the product goal.
+Heurism is our Linux distribution and hardware control platform. Target 0 is
+the Dell Inspiron 7506. The installed kernel, drivers, package manager and many
+desktop components currently come from Alpine upstream packages. Heurism owns
+the distribution identity, VM package selection, startup experience, service
+policy, C runtime, interface integration and hardware control workflows.
+Rebuilding Linux or its USB, networking, storage and graphics drivers is not
+the product goal. The [system base record](heurism-system-base.md) tracks the
+remaining work to make the image and update lifecycle Heurism-owned.
 
 ## System boundaries
 
@@ -12,9 +15,9 @@ its USB, networking, storage and graphics drivers is not the product goal.
 Dell UEFI and embedded controllers
   -> existing SSD startup extension (installed before the Heurism rename)
   -> recovery-aware GRUB (hidden; Escape reveals recovery)
-  -> Linux kernel and existing device drivers
+  -> Linux kernel and drivers from upstream packages
   -> system services and authenticated remote management
-  -> Heurism C control service and Xfce session
+  -> Heurism C control service and upstream Xfce session
   -> Heurism local interface and applications
 ```
 

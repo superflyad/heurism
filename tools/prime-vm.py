@@ -116,6 +116,9 @@ def build():
     call(['ssh', 'prime-linux', 'sudo -n mkdir -p '+stage+' && sudo -n chown ubuntu:ubuntu '+stage])
     for source, name in [(archive, 'desktop.tar.gz'), (key.with_suffix('.pub'), 'client.pub'),
                          (REPO/'tools/build-hyperv-guest.sh', 'build.sh'),
+                         (REPO/'platform/heurism/os-release', 'heurism-os-release'),
+                         (REPO/'platform/heurism/upstream-release', 'heurism-upstream-release'),
+                         (REPO/'platform/heurism/vm-packages.list', 'heurism-vm-packages.list'),
                          (REPO/'platform/hyperv/companion-watch', 'companion-watch'),
                          (REPO/'platform/hyperv/watch.initd', 'watch.initd')]:
         call(['scp', str(source), 'prime-linux:'+stage+'/'+name])
