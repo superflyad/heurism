@@ -24,7 +24,8 @@ test result and rollback path. See the [architecture](architecture.md),
   exist. Bounded scrollback passed a live Dell session before a checked reboot,
   but [post-reboot Dell health is unverified](dell-terminal-20261009.md).
   The later scrollback title cue is VM only.
-  [Selection, clipboard and clean close](terminal-clipboard.md) are also VM only.
+  [Selection, clipboard, clean close and a CJK font fallback](terminal-clipboard.md)
+  are also VM only.
 - [x] A fresh C-first VM image booted, painted the desktop, passed fallback and
   checked power tests. The Dell's last known release used its guarded installer
   and existing SSD boot path; its present boot state remains unverified.

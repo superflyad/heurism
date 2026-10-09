@@ -33,7 +33,7 @@ so its controls do not bypass Heurism's checked power path. See
 [xfce-bridge.md](../../docs/xfce-bridge.md).
 
 The active VM release is selected by `/opt/heurism/native/current` and is
-`/opt/heurism/native/releases/heurism-os-20261009T172555Z-50199`.
+`/opt/heurism/native/releases/heurism-os-20261009T173229Z-54707`.
 The separate fresh-image candidate uses `install-image-vm.sh` during image
 construction. It seals the compiled C binaries before first boot, installs
 the active C services and provides the Xfce-to-C-workspace startup fallback.
@@ -79,7 +79,9 @@ for startup and recovery scripts. The local terminal candidate retains up to
 navigation. The current VM release also shows the scrollback position in the
 window title and has [X11 text selection and clipboard](../../docs/terminal-clipboard.md).
 The Dell ran the preceding scrollback build before its unverified reboot.
-Application mouse reporting, full font fallback and accessibility remain open.
+The VM includes a WenQuanYi fallback for tested CJK glyphs. Broader Unicode
+coverage, wide-character alignment, application mouse reporting and
+accessibility remain open.
 Firefox and Onboard remain external Unix applications. Administrator access uses authenticated root
 SSH; it no longer opens a root terminal in the shared X11 session. See
 [security.md](../../docs/security.md) for the current security boundary.

@@ -21,7 +21,7 @@ packages, the Xfce session or the image build process Heurism-native by itself.
 
 ## Build ownership
 
-`platform/heurism/vm-packages.list` selects 45 direct packages for the new
+`platform/heurism/vm-packages.list` selects 46 direct packages for the next
 Hyper-V VM image. `tools/prime-vm.py` stages the package profile, C runtime
 source, system identity and wallpaper. `tools/build-hyperv-guest.sh` verifies
 staged hashes and package names before using `apk`. It starts from the pinned
@@ -36,6 +36,8 @@ component uses Python. The image records all installed package versions and
 the base/source/profile hashes under `/etc/heurism`; these records and the
 wallpaper are in its protected manifest. The installed inventory is a record,
 not a repository lock. The Alpine v3.24 URLs do not pin every package build.
+The revised profile adds `font-wqy-zenhei` for C terminal glyph fallback; the
+existing image candidate predates that profile and has not been rebuilt with it.
 
 The first C-first candidate image SHA256 is
 `5bce37d38af77435b65e99f999284a9560c70216fa08e38ebfd4bfc9882f9e8c`.

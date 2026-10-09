@@ -21,6 +21,7 @@ xvfb
 openbox
 xterm
 font-dejavu
+font-wqy-zenhei
 dbus
 dbus-openrc
 pulseaudio

@@ -46,6 +46,7 @@ struct terminal {
     Visual *visual;
     GC gc;
     XftFont *font;
+    XftFont *fallback_font;
     XftDraw *draw;
     VTerm *vt;
     VTermScreen *screen;
@@ -209,7 +210,11 @@ static void redraw(struct terminal *t) {
                              .color = {(unsigned short)(rgb.rgb.red * 257),
                                        (unsigned short)(rgb.rgb.green * 257),
                                        (unsigned short)(rgb.rgb.blue * 257), 65535}};
-            XftDrawString32(t->draw, &color, t->font,
+            XftFont *face = t->font;
+            if (t->fallback_font && !XftCharExists(t->display, face, chars[0]) &&
+                XftCharExists(t->display, t->fallback_font, chars[0]))
+                face = t->fallback_font;
+            XftDrawString32(t->draw, &color, face,
                             MARGIN + col * t->cell_width,
                             MARGIN + row * t->cell_height + t->font->ascent,
                             chars, length);
@@ -606,6 +611,8 @@ int main(int argc, char **argv) {
     if (t.visual->class != TrueColor) return fprintf(stderr, "heurism-terminal: TrueColor display required\n"), 1;
     t.font = XftFontOpenName(t.display, t.screen_number, "DejaVu Sans Mono:size=13");
     if (!t.font) return fprintf(stderr, "heurism-terminal: font unavailable\n"), 1;
+    t.fallback_font = XftFontOpenName(t.display, t.screen_number,
+                                     "WenQuanYi Zen Hei Mono:size=13");
     t.cell_width = t.font->max_advance_width;
     t.cell_height = t.font->ascent + t.font->descent + 3;
     if (t.cell_width < 1 || t.cell_height < 1) return 1;
@@ -747,6 +754,7 @@ int main(int argc, char **argv) {
     if (xic) XDestroyIC(xic);
     if (xim) XCloseIM(xim);
     if (!t.window_destroyed) XftDrawDestroy(t.draw);
+    if (t.fallback_font) XftFontClose(t.display, t.fallback_font);
     XftFontClose(t.display, t.font);
     XFreeGC(t.display, t.gc);
     if (!t.window_destroyed) XDestroyWindow(t.display, t.window);

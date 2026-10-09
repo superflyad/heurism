@@ -10,7 +10,7 @@ test -f "$stage/client.pub"
 test "$(sha256sum "$stage/heurism-os-release" | cut -d ' ' -f 1)" = 4cb2272e2f85fe61c37fab906149fb8624035ef38847d5b5439ba8e1d7bbb367
 test "$(sha256sum "$stage/heurism-upstream-release" | cut -d ' ' -f 1)" = 1eb5561b4eae9962ff0f16ba7900cdc1f444535490f4863954e5bceab26beab3
 test "$(sha256sum "$stage/heurism-wallpaper.svg" | cut -d ' ' -f 1)" = d65fab95b78ecacf6f744d08c43048b5b56fb62007fc148796f4b8cc878ca8fb
-test "$(sha256sum "$stage/heurism-vm-packages.list" | cut -d ' ' -f 1)" = 897013821b6ebce630e3b2ec792d5031eced35bc6a387ce52503158b84d4530d
+test "$(sha256sum "$stage/heurism-vm-packages.list" | cut -d ' ' -f 1)" = 9c1c677b5181e3c0b949aad41c0b8fa9049b77e6e343d84e4788415230d52270
 test ! -e "$stage/guest.raw"
 root="$stage/root"
 mkdir -p "$root"
@@ -48,7 +48,7 @@ while IFS= read -r package || [ -n "$package" ]; do
     [[ "$package" =~ ^[a-z0-9][a-z0-9+_.-]*$ ]] || { echo "Invalid package name: $package" >&2; exit 1; }
     packages+=("$package")
 done < "$stage/heurism-vm-packages.list"
-test "${#packages[@]}" = 45
+test "${#packages[@]}" = 46
 chroot "$root" apk add "${packages[@]}"
 test -L "$root/etc/os-release"
 test "$(readlink "$root/etc/os-release")" = ../usr/lib/os-release

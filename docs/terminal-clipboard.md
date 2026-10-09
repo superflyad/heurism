@@ -49,6 +49,17 @@ files. The second paste sent the text, and the harmless test commands ran.
 Closing a candidate and then the active-release terminal ended their processes
 without a surviving shell or X11 error.
 
+A second VM-only release,
+`/opt/heurism/native/releases/heurism-os-20261009T173229Z-54707`, adds a
+WenQuanYi Zen Hei Mono fallback when DejaVu Sans Mono lacks a glyph. The VM
+installed `font-wqy-zenhei` (about 16 MiB installed), and a capture of the
+active release shows `héllo 世界` with visible CJK glyphs. Its sealed terminal
+binary hash matched the staged binary; release verification, Xfce health and
+the live terminal PTY/resize/Ctrl+C test passed. Closing the active window
+again ended its process cleanly. The VM package manifest now includes the font
+for future images, but an image from that revised manifest has not yet been
+built or booted.
+
 The interactive shell test entered an 8192-byte line, observed the explicit
 length error and then executed the following valid command. Temporary build
 headers and `xclip` were removed after verification. No VM cold boot has yet
@@ -60,7 +71,9 @@ X11 PRIMARY and CLIPBOARD are shared with other clients in this UID-1000
 session; they do not protect secrets from untrusted applications. Selection
 copies visible cell text, trims trailing spaces and inserts a newline between
 selected screen rows; it does not yet reconstruct wrapped logical lines.
-Pastes above 8192 bytes require a different workflow. Font fallback, richer
-selection behavior, clipboard persistence after the terminal exits and
-accessibility remain open. See [security status](security.md) and the
+Pastes above 8192 bytes require a different workflow. The installed fallback
+covers the tested CJK sample; broad Unicode coverage and wide-character cell
+alignment remain unverified. Richer selection behavior, clipboard persistence
+after the terminal exits and accessibility remain open. See
+[security status](security.md) and the
 [OS checklist](os-checklist.md).
