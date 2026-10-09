@@ -14,7 +14,9 @@ driver=(build/'companionextx64.efi').read_bytes()
 qemu=repo/'build/tools/qemu/qemu-system-x86_64.exe'
 firmware=repo/'build/network-root/ovmf'
 reports=[]
-for case,name in enumerate(['valid-nv','missing-nv','corrupt-nv']):
+for case,name in enumerate(['valid-legacy-nv','missing-both','corrupt-legacy-nv',
+                            'valid-heurism-nv','corrupt-heurism-valid-legacy',
+                            'corrupt-both']):
  out=build/('vm-'+name);esp=out/'esp/EFI/BOOT';esp.mkdir(parents=True,exist_ok=True)
  flags=['--target=x86_64-pc-windows-msvc','-std=c11','-ffreestanding','-fshort-wchar','-mno-red-zone','-fno-stack-protector','-fno-builtin','-Wall','-Wextra','-Werror','-O2',f'-DSTARTUP_VM_CASE={case}']
  subprocess.run([args.clang,*flags,'-c',str(repo/'tests/nv_startup_vm.c'),'-o',str(out/'app.obj')],check=True)

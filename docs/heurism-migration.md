@@ -102,6 +102,10 @@ boot with the old path available for recovery before any old variable is
 removed. Product UI and management now say Heurism; this firmware compatibility
 identifier still says Companion.
 
+A [dual-name NVRAM candidate](heurism-nv-migration.md) has passed host and
+isolated OVMF tests and is staged off the EFI partition on the Dell. Physical
+NVRAM and boot-driver activation remain pending a local recovery path.
+
 ## Installed interfaces retained during migration
 
 The protected EFI loader, SSD kernel and recovery paths, Boot0005 display

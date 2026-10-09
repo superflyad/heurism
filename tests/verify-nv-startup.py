@@ -13,7 +13,7 @@ assert struct.unpack_from('<II',data,optional+120)==(0,0)
 assert all(struct.unpack_from('<II',data,optional+152))
 dll=ctypes.CDLL(str(root/'nv-startup-tests.dll'))
 result=dll.nv_startup_run_tests();assert result==0,result
-report={'sha256':hashlib.sha256(data).hexdigest(),'host_cases':13,'passed':True,
-        'scope':'Exact retrieved NV source, invalid/missing/short payload, attributes, load/start/protocol/info failures, runtime absence, diagnostic failure and SSD fallback.'}
+report={'sha256':hashlib.sha256(data).hexdigest(),'host_cases':19,'passed':True,
+        'scope':'Preferred Heurism NV and legacy recovery reads, exact retrieved source, invalid/missing/short payload, attributes, load/start/protocol/info failures, runtime absence, diagnostic failure and SSD fallback.'}
 (root/'host-verification.json').write_text(json.dumps(report,indent=2))
 print(json.dumps(report,indent=2))

@@ -1,5 +1,18 @@
 # Current product direction
 
+On 2026-10-09 a dual-name EFI bootstrap candidate was built for the Heurism
+NVRAM variable migration. Nineteen host and six isolated OVMF cases passed;
+the candidate is staged only under
+`/var/lib/companion/firmware/heurism-nv-candidate/dual-name.efi` on the Dell.
+No new physical NVRAM variable was created and the active EFI driver, protected
+manifest and boot order were not changed. The new reader accepts the exact
+pinned image under `HeurismExtensionImage01`, retains the old
+`CompanionExtensionImage01` lookup and SSD fallback, and reports path 3 for a
+verified Heurism variable. The payload ABI and volatile marker still use the
+legacy name. Do not activate the physical EFI change while no local power-button
+recovery is available; SSH cannot recover a preboot hang. See
+`docs/heurism-nv-migration.md`.
+
 The owner renamed the OS product to **Heurism** and asked for a deep C runtime
 migration. Active VM and Dell releases use `/opt/heurism/native/current`,
 `heurism-*` C executables and Xfce launchers. Current releases are VM
