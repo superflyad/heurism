@@ -96,6 +96,10 @@ tool logged the old and new values; readback is `ContWrn` and
 the same boot. The new policy has **not** yet been tested through a restart;
 the headless banner may return, and an error can still halt POST. The
 remote-power guard stays in place. No reboot was initiated for this change.
+On the recovered Linux boot, three readings two seconds apart showed CPU
+package temperature falling from 42°C to 41°C and package thermal-throttle
+count stable at 42. This short idle sample does not reveal the preboot
+temperature or why the firmware stalled.
 
 ## Continued VM work
 
