@@ -9,12 +9,19 @@ power cycle. The precise preboot cause is unknown; do not attribute it to the
 C terminal or claim it fixed. The earlier banner-suppression change left Dell
 BIOS `WarningsAndErr=PromptWrnErr`, which Dell documents can halt POST on a
 warning. This was reverted through the supported BIOS interface to the prior
-`ContWrn` on the live boot; readback passed and `pending_reboot=1`. The change
-has not been validated by a reboot. The headless banner may return. Do not
-perform an unattended Dell reboot or poweroff. The host remote-power guard
-remains active; a validation reboot requires a person at the Dell who can
-observe and power-cycle it. Keep the SSD management and recovery path intact.
-See `docs/dell-terminal-20261009.md`.
+`ContWrn` on the live boot. With the owner physically at the Dell, one checked
+C restart returned normally on fresh boot
+`9668135f-ca95-4be3-a0d9-78a6fc9a78a7`; the owner saw no warning or unusual
+behavior. Pinned SSH/watch/control, painted Xfce, the active sealed release,
+SSD bootstrap, protected hashes and C power check passed. Dell appended its
+known USB NIC entries; after checking them, BootOrder was restored to
+`0005,0000`. BootCurrent is `0005`, DriverOrder `0000,0001`, BootNext absent.
+One normal boot does not establish the earlier stall's cause or unattended
+reliability. Do not perform an unattended Dell reboot or poweroff. The host
+remote-power guard remains active; a restart requires a person who can inspect
+and power-cycle the Dell until an independently powered reset and observation
+path is physically proven. Keep SSD management and recovery intact. See
+`docs/dell-terminal-20261009.md` and `docs/independent-control.md`.
 
 The owner clarified that Heurism is not ready for a public OS release and asked
 to focus on making the OS excellent. On 2026-10-09 a local C terminal iteration

@@ -71,6 +71,8 @@ channel. Reset and rescue can restore a new SSH session after supported failures
 SSH does not remain active during a kernel crash. Independent out-of-band
 hardware would be needed for reliable control across all of those states.
 Motherboard firmware is unchanged.
+The [independent control plan](independent-control.md) separates Linux recovery
+from the external reset and observation path required for a firmware-logo halt.
 
 This Dell's supported BIOS settings are exposed under
 `/sys/class/firmware-attributes/dell-wmi-sysman/attributes/`. Setting descriptions,

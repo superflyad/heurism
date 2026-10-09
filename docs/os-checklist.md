@@ -86,6 +86,12 @@ Use the [Dell daily-use pass](dell-daily-use-pass.md) to record physical results
 
 ## P0 — Prevent data loss and failed boots
 
+- [ ] **Close the preboot recovery gap.** The owner physically recovered a Dell
+  logo stall after a clean Linux shutdown. One later monitored restart with
+  warning continuation restored passed, but SSH, rescue and Linux watchdogs
+  cannot act at that logo. Build and prove an [independent control path](independent-control.md)
+  before allowing unattended Dell power operations. Keep `--local-recovery-ready`
+  in force until the physical acceptance gate passes.
 - [ ] **Specify one internal system update transaction.** Pin the input package
   set and C release, verify all inputs, stage changes away from the running
   system, then activate them together. Record exactly what is installed.

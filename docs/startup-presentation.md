@@ -150,5 +150,8 @@ On 2026-10-09 a later checked reboot stalled at the Dell logo and required a
 physical power cycle. The precise preboot cause remains unknown. Because Dell
 documents that `PromptWrnErr` can stop POST on warnings, the owner-prioritized
 remote-access recovery led to restoring the earlier `ContWrn` setting. Readback
-passed with `pending_reboot=1`; no validation reboot has occurred yet. The
-headless banner may return. See [the incident record](dell-terminal-20261009.md).
+passed with `pending_reboot=1`. A later monitored checked restart returned fresh
+boot `9668135f-ca95-4be3-a0d9-78a6fc9a78a7` with management and desktop
+healthy; the owner saw no warning or unusual behavior. One pass does not
+establish the stall's cause or eliminate the preboot recovery gap. See
+[the incident record](dell-terminal-20261009.md).

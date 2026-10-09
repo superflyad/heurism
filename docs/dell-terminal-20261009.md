@@ -93,13 +93,31 @@ recovered boot, `companion-bios set WarningsAndErr ContWrn` restored the prior
 continue-on-warning value through Dell's supported firmware interface. The
 tool logged the old and new values; readback is `ContWrn` and
 `pending_reboot=1`. The sealed release, UI, SSH and watch remained healthy on
-the same boot. The new policy has **not** yet been tested through a restart;
-the headless banner may return, and an error can still halt POST. The
-remote-power guard stays in place. No reboot was initiated for this change.
+the same boot. The new policy had not yet been tested through a restart at
+that point. The remote-power guard stayed in place.
 On the recovered Linux boot, three readings two seconds apart showed CPU
 package temperature falling from 42°C to 41°C and package thermal-throttle
 count stable at 42. This short idle sample does not reveal the preboot
 temperature or why the firmware stalled.
+
+## Monitored validation of the warning policy
+
+With the owner at the Dell, one checked C restart was scheduled from boot
+`30913da8-5441-41d6-967f-020680316816`. Pinned SSH returned on fresh boot
+`9668135f-ca95-4be3-a0d9-78a6fc9a78a7`; the owner saw no warning or unusual
+behavior before the desktop. This confirms one normal startup with
+`WarningsAndErr=ContWrn`, not the cause of the earlier logo stall or a measured
+unattended reliability rate.
+
+The new boot reported healthy SSH, watch and boot status, the same sealed Dell
+release, and a UID-1000 Xfce session. A screen capture showed the painted
+1920×1080 workspace and dock. The C `power-check`, SSD bootstrap verification,
+NV startup marker and protected manifest passed. Firmware had again appended
+auto-created USB NIC entries after the two SSD entries; after checking their
+identities, `BootOrder` was restored to `0005,0000`. `BootCurrent` remained
+`0005`, `DriverOrder` `0000,0001`, and `BootNext` was absent. No second restart
+was attempted. The physical-recovery guard remains required for Dell power
+commands until a separately tested out-of-band reset path exists.
 
 ## Continued VM work
 
