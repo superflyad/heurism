@@ -72,8 +72,11 @@ evidence and remaining work.
 The shell has cursor editing, session-only command history and unquoted whole-word
 pathname globbing. It is smaller than a POSIX script shell: it lacks job control,
 command substitution, functions and completion. BusyBox ash remains
-for startup and recovery scripts. The terminal still lacks scrollback,
-clipboard, mouse reporting and accessibility support. Firefox and Onboard
+for startup and recovery scripts. The local terminal candidate retains up to
+512 scrolled lines and supports Shift+PageUp/PageDown and mouse-wheel history
+navigation; the existing VM and Dell releases do not yet have that change.
+The terminal still lacks selection, clipboard, application mouse reporting and
+accessibility support. Firefox and Onboard
 remain external Unix applications. Administrator access uses authenticated root
 SSH; it no longer opens a root terminal in the shared X11 session. See
 [security.md](../../docs/security.md) for the current security boundary.

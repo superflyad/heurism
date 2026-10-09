@@ -186,8 +186,11 @@ restrictions on native kernels, PXE and management-link detachment still apply.
 The Dell hardware code is restricted to the exact Inspiron 7506 2n1 DMI. The VM never
 claims Dell Wi-Fi, speakers, touchpad or BIOS hardware. The Dell's existing
 SSD boot/recovery and independent root management remain untouched. The shell
-is not a full POSIX script shell; BusyBox ash still runs startup scripts. The terminal needs
-scrollback, clipboard and accessibility work. Browser and Onboard are external
+is not a full POSIX script shell; BusyBox ash still runs startup scripts. A
+local C terminal candidate has bounded scrollback and passed real X11
+keyboard/wheel, long-output and resize checks in the isolated image VM. It is
+not yet active on the existing VM or Dell. The terminal still needs text
+selection, clipboard and accessibility work. Browser and Onboard are external
 Unix applications. Companion remains a C userspace on Linux, with the Dell
 release active under the checks above. See [security.md](security.md) for the
 current threat model and remaining security work.

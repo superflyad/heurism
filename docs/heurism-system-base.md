@@ -37,7 +37,7 @@ the base/source/profile hashes under `/etc/heurism`; these records and the
 wallpaper are in its protected manifest. The installed inventory is a record,
 not a repository lock. The Alpine v3.24 URLs do not pin every package build.
 
-The candidate image SHA256 is
+The first C-first candidate image SHA256 is
 `5bce37d38af77435b65e99f999284a9560c70216fa08e38ebfd4bfc9882f9e8c`.
 It is an isolated test artifact, not a public image: its root authorized key
 and generated SSH host private key are baked into the VHDX. A distributable
@@ -63,6 +63,25 @@ its existing C release and Xfce health. Its pretest checkpoint is
 `Heurism-before-image-candidate-20261009` (UUID
 `a90e8c9e-73d7-4967-bb17-fb3eb5e66e1b`). The candidate was never installed
 on the Dell.
+
+The latest local image candidate SHA256 is
+`1c0cef7e9a02d369d19b306a7ee25ddf1575c9b6678b7504489c50f94809569c`.
+It adds 512-line bounded C terminal scrollback and corrects host staging of
+Unix text when Windows checks out CRLF files. Earlier isolated terminal
+screenshots showed lines 60–80 live, 39–60 after Shift+PageUp and 36–57 after
+one wheel step. Shift+PageDown restored the prompt and a new command wrote a
+UID-1000 file. Seven hundred output lines and a resize left the terminal
+healthy with 8.5 MiB resident memory in that observation. A narrow-to-wide
+resize exposed a black repaint patch in a later candidate; blank backfill
+cells now have unit width and default colors. The corrected binary passed the
+same live resize check, then the exact sealed image booted on
+`5fbcdc7a-b640-4eda-b4db-d8d00ce9626e` with release
+`/opt/heurism/native/releases/heurism-os-image-20261009T152521Z`. Its actual
+framebuffer had the normal terminal background after narrow-to-wide resize;
+release, Xfce, package inventory, protected files and C power checks passed.
+Checked poweroff reached host-observed Off. `CompanionDev` returned on fresh
+boot `0b1b0863-01f4-4406-a6bd-a9a2c37e4cc7` with its existing release and
+Xfce healthy. This local candidate was not installed on the Dell or published.
 
 The VM passed the identity installer and a checked fresh boot
 `82e62200-48b6-44f5-9562-78f8c55ad056`. Its Heurism C release, Xfce health,

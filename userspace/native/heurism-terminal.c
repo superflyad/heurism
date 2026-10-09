@@ -24,6 +24,12 @@
 #define SHELL_PATH "/opt/heurism/native/current/heurism-sh"
 #define OUT_CAPACITY 65536
 #define MARGIN 12
+#define HISTORY_CAPACITY 512
+
+struct history_line {
+    VTermScreenCell *cells;
+    int cols;
+};
 
 struct terminal {
     Display *display;
@@ -41,8 +47,59 @@ struct terminal {
     int width, height, cell_width, cell_height, rows, cols;
     char outgoing[OUT_CAPACITY];
     size_t outgoing_length;
+    struct history_line history[HISTORY_CAPACITY];
+    size_t history_head, history_count, view_offset;
     bool running;
 };
+
+static struct history_line *history_at(struct terminal *t, size_t index) {
+    return &t->history[(t->history_head + index) % HISTORY_CAPACITY];
+}
+
+static int history_push(int cols, const VTermScreenCell *cells, void *context) {
+    struct terminal *t = context;
+    if (cols <= 0 || cols > 300) return 0;
+    VTermScreenCell *copy = malloc((size_t)cols * sizeof *copy);
+    if (!copy) return 0;
+    memcpy(copy, cells, (size_t)cols * sizeof *copy);
+    if (t->history_count == HISTORY_CAPACITY) {
+        struct history_line *oldest = history_at(t, 0);
+        free(oldest->cells);
+        oldest->cells = NULL;
+        t->history_head = (t->history_head + 1) % HISTORY_CAPACITY;
+        t->history_count--;
+    }
+    *history_at(t, t->history_count++) = (struct history_line){copy, cols};
+    if (t->view_offset && t->view_offset < t->history_count) t->view_offset++;
+    return 1;
+}
+
+static int history_pop(int cols, VTermScreenCell *cells, void *context) {
+    struct terminal *t = context;
+    if (!t->history_count || cols <= 0) return 0;
+    struct history_line *line = history_at(t, t->history_count - 1);
+    memset(cells, 0, (size_t)cols * sizeof *cells);
+    /* Resized blank cells must be traversable and retain the default theme. */
+    for (int i = 0; i < cols; i++) {
+        cells[i].width = 1;
+        cells[i].fg.type = VTERM_COLOR_DEFAULT_FG;
+        cells[i].bg.type = VTERM_COLOR_DEFAULT_BG;
+    }
+    int copied = cols < line->cols ? cols : line->cols;
+    memcpy(cells, line->cells, (size_t)copied * sizeof *cells);
+    free(line->cells);
+    *line = (struct history_line){0};
+    t->history_count--;
+    if (t->view_offset > t->history_count) t->view_offset = t->history_count;
+    return 1;
+}
+
+static int history_clear(void *context) {
+    struct terminal *t = context;
+    for (size_t i = 0; i < t->history_count; i++) free(history_at(t, i)->cells);
+    t->history_head = t->history_count = t->view_offset = 0;
+    return 1;
+}
 
 static unsigned long component_pixel(unsigned value, unsigned long mask) {
     if (!mask) return 0;
@@ -64,9 +121,16 @@ static void redraw(struct terminal *t) {
     XFillRectangle(t->display, t->window, t->gc, 0, 0,
                    (unsigned)t->width, (unsigned)t->height);
     for (int row = 0; row < t->rows; row++) {
+        size_t index = t->history_count - t->view_offset + (size_t)row;
+        struct history_line *line = index < t->history_count ? history_at(t, index) : NULL;
+        int live_row = (int)index - (int)t->history_count;
         for (int col = 0; col < t->cols; col++) {
             VTermScreenCell cell;
-            if (!vterm_screen_get_cell(t->screen, (VTermPos){row, col}, &cell)) continue;
+            if (line) {
+                if (col >= line->cols) continue;
+                cell = line->cells[col];
+            } else if (!vterm_screen_get_cell(t->screen,
+                       (VTermPos){live_row, col}, &cell)) continue;
             VTermColor foreground = cell.attrs.reverse ? cell.bg : cell.fg;
             VTermColor background = cell.attrs.reverse ? cell.fg : cell.bg;
             if (!VTERM_COLOR_IS_DEFAULT_BG(&background) || cell.attrs.reverse) {
@@ -102,7 +166,8 @@ static void redraw(struct terminal *t) {
     }
     VTermPos cursor;
     vterm_state_get_cursorpos(vterm_obtain_state(t->vt), &cursor);
-    if (cursor.row >= 0 && cursor.row < t->rows && cursor.col >= 0 && cursor.col < t->cols) {
+    if (!t->view_offset && cursor.row >= 0 && cursor.row < t->rows &&
+        cursor.col >= 0 && cursor.col < t->cols) {
         XSetForeground(t->display, t->gc, 0x50e1be);
         XFillRectangle(t->display, t->window, t->gc,
                        MARGIN + cursor.col * t->cell_width,
@@ -199,6 +264,17 @@ static VTermKey special_key(KeySym key) {
     }
 }
 
+static void scroll_view(struct terminal *t, int lines) {
+    if (lines > 0) {
+        size_t room = t->history_count - t->view_offset;
+        t->view_offset += (size_t)lines < room ? (size_t)lines : room;
+    } else if (lines < 0) {
+        size_t amount = (size_t)(-lines);
+        t->view_offset -= amount < t->view_offset ? amount : t->view_offset;
+    }
+    redraw(t);
+}
+
 static void keypress(struct terminal *t, XKeyEvent *event, XIC input_context) {
     char buffer[128];
     KeySym symbol = NoSymbol;
@@ -209,6 +285,15 @@ static void keypress(struct terminal *t, XKeyEvent *event, XIC input_context) {
                                   &symbol, &status);
         if (status == XBufferOverflow) return;
     } else count = XLookupString(event, buffer, sizeof buffer, &symbol, NULL);
+    if ((event->state & ShiftMask) && symbol == XK_Page_Up) {
+        scroll_view(t, t->rows - 1);
+        return;
+    }
+    if ((event->state & ShiftMask) && symbol == XK_Page_Down) {
+        scroll_view(t, 1 - t->rows);
+        return;
+    }
+    if (t->view_offset) { t->view_offset = 0; redraw(t); }
     VTermModifier modifier = VTERM_MOD_NONE;
     if (event->state & ShiftMask) modifier |= VTERM_MOD_SHIFT;
     if (event->state & ControlMask) modifier |= VTERM_MOD_CTRL;
@@ -256,6 +341,12 @@ int main(int argc, char **argv) {
     if (!t.vt) return fprintf(stderr, "heurism-terminal: vterm allocation failed\n"), 1;
     vterm_set_utf8(t.vt, 1);
     t.screen = vterm_obtain_screen(t.vt);
+    static const VTermScreenCallbacks callbacks = {
+        .sb_pushline = history_push,
+        .sb_popline = history_pop,
+        .sb_clear = history_clear,
+    };
+    vterm_screen_set_callbacks(t.screen, &callbacks, &t);
     VTermColor fg = {.rgb = {VTERM_COLOR_RGB, 222, 235, 244}};
     VTermColor bg = {.rgb = {VTERM_COLOR_RGB, 10, 19, 29}};
     vterm_screen_set_default_colors(t.screen, &fg, &bg);
@@ -273,7 +364,7 @@ int main(int argc, char **argv) {
     t.wm_delete = XInternAtom(t.display, "WM_DELETE_WINDOW", False);
     XSetWMProtocols(t.display, t.window, &t.wm_delete, 1);
     XSelectInput(t.display, t.window, ExposureMask | StructureNotifyMask |
-                 KeyPressMask | FocusChangeMask);
+                 KeyPressMask | ButtonPressMask | FocusChangeMask);
     t.gc = XCreateGC(t.display, t.window, 0, NULL);
     t.draw = XftDrawCreate(t.display, t.window, t.visual,
                            DefaultColormap(t.display, t.screen_number));
@@ -309,6 +400,10 @@ int main(int argc, char **argv) {
             else if (event.type == ConfigureNotify)
                 resize_terminal(&t, event.xconfigure.width, event.xconfigure.height);
             else if (event.type == KeyPress) keypress(&t, &event.xkey, xic);
+            else if (event.type == ButtonPress && event.xbutton.button == Button4)
+                scroll_view(&t, 3);
+            else if (event.type == ButtonPress && event.xbutton.button == Button5)
+                scroll_view(&t, -3);
             else if (event.type == FocusIn && xic) XSetICFocus(xic);
             else if (event.type == FocusOut && xic) XUnsetICFocus(xic);
             else if (event.type == ClientMessage &&
@@ -346,6 +441,7 @@ int main(int argc, char **argv) {
     XFreeGC(t.display, t.gc);
     XDestroyWindow(t.display, t.window);
     XCloseDisplay(t.display);
+    history_clear(&t);
     vterm_free(t.vt);
     close(t.master);
     return 0;

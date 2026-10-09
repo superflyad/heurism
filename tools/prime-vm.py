@@ -133,6 +133,8 @@ def build():
     native = native_archive()
     stage = '/var/lib/companion-vm-build/'+datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%SZ')
     call(['ssh', 'prime-linux', 'sudo -n mkdir -p '+stage+' && sudo -n chown ubuntu:ubuntu '+stage])
+    staged_inputs = OUT/'stage-inputs'
+    staged_inputs.mkdir(parents=True, exist_ok=True)
     for source, name in [(native, 'native.tar.gz'), (key.with_suffix('.pub'), 'client.pub'),
                          (REPO/'tools/build-hyperv-guest.sh', 'build.sh'),
                          (REPO/'platform/heurism/os-release', 'heurism-os-release'),
@@ -141,7 +143,11 @@ def build():
                          (REPO/'platform/heurism/vm-packages.list', 'heurism-vm-packages.list'),
                          (REPO/'platform/hyperv/companion-watch', 'companion-watch'),
                          (REPO/'platform/hyperv/watch.initd', 'watch.initd')]:
-        call(['scp', str(source), 'prime-linux:'+stage+'/'+name])
+        local = source
+        if name not in ('native.tar.gz', 'client.pub'):
+            local = staged_inputs/name
+            local.write_bytes(source.read_bytes().replace(b'\r\n', b'\n'))
+        call(['scp', str(local), 'prime-linux:'+stage+'/'+name])
     (OUT/'builder.json').write_text(json.dumps({'stage': stage,
         'native_sha256': hashlib.sha256(native.read_bytes()).hexdigest()}, indent=2))
     call(['ssh', 'prime-linux', 'sudo -n bash '+stage+'/build.sh '+stage], timeout=1200)

@@ -1,5 +1,26 @@
 # Current product direction
 
+The owner clarified that Heurism is not ready for a public OS release and asked
+to focus on making the OS excellent. On 2026-10-09 a local C terminal iteration
+added 512-line bounded scrollback with Shift+PageUp/PageDown and wheel
+navigation. The build staging path now normalizes Windows CRLF source files
+before sending Unix scripts to PrimeLinux. Latest isolated image SHA256 is
+`1c0cef7e9a02d369d19b306a7ee25ddf1575c9b6678b7504489c50f94809569c`;
+boot `5fbcdc7a-b640-4eda-b4db-d8d00ce9626e` ran sealed release
+`/opt/heurism/native/releases/heurism-os-image-20261009T152521Z`. Real X11
+terminal screenshots on the preceding candidate showed live lines 60–80,
+39–60 after Shift+PageUp and 36–57 after one wheel step. Returning to the
+prompt wrote a UID-1000 file; 700 lines left the process healthy. A
+narrow-to-wide resize exposed black blank-cell repainting, fixed by setting
+unit width and default colors on backfilled cells. The final sealed image
+passed that same framebuffer resize check, protected hashes, package inventory
+and C power. Checked poweroff reached host-observed Off. Original
+`CompanionDev` restarted on healthy boot
+`0b1b0863-01f4-4406-a6bd-a9a2c37e4cc7`; candidate is Off. The terminal
+change has not been activated on the existing VM or Dell. Do not publish an OS
+image or characterize this iteration as a public release. See
+`docs/heurism-system-base.md` and `docs/native-runtime.md`.
+
 On 2026-10-09 a fresh C-first Heurism VM image was built from the checked
 Alpine 3.24.2 base and 45 direct package selections. Its VHDX SHA256 is
 `5bce37d38af77435b65e99f999284a9560c70216fa08e38ebfd4bfc9882f9e8c`.

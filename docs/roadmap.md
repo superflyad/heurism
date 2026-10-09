@@ -11,7 +11,7 @@ proving ground. See [architecture](architecture.md),
 | System base | Heurism identity on VM and Dell; fresh C-first Hyper-V candidate booted and passed first paint, fallback, reboot and shutdown gates; Alpine 3.24.2 package source retained | Provision per-install SSH keys, pin a package source, and prove whole-system update and rollback without losing management |
 | Daily desktop | Xfce panel, workspace, Thunar, Mousepad, Firefox, Heurism Settings and Power | Complete ordinary file, browser and settings tasks from the Dell display with human input |
 | Shell | C command runner with editing, history, pipes, redirection and basic globbing | Add job control, completion and more POSIX shell behavior with real PTY checks |
-| Terminal | C X11/Xft/libvterm PTY with resize and Ctrl+C verified | Add scrollback, selection and clipboard before treating it as a primary terminal |
+| Terminal | C X11/Xft/libvterm PTY; bounded scrollback and keyboard/wheel navigation verified in the isolated image VM; existing VM and Dell still run the preceding release | Add text selection and clipboard, then exercise the updated terminal on the Dell |
 | Platform controls | C local socket checks hardware, BIOS, sound, input and guarded power | Keep controls usable across restart and cold boot; test physical input and audio quality |
 | Releases | Sealed VM and Dell C releases with health gates and rollback; checked reboot passed | Exercise delayed and failed startup recovery after reboot without losing root management |
 | Security | Root SSH keys, local peer-checked control socket, protected boot hashes | Reduce shared-X11/UID-1000 exposure and plan disk encryption with a recoverable boot path |
