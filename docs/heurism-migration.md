@@ -38,6 +38,9 @@ USB NIC entries 0001 and 0002 to BootOrder; after their exact MAC and paths
 were checked, BootOrder was restored to `0005,0000`. BootCurrent is `0005`,
 DriverOrder is `0000,0001`, and BootNext is absent. Temporary build packages
 were removed from both machines.
+The live Dell Heurism Power window opened and closed with Escape without
+requesting a power action. The active control socket is mode `0660` under a
+mode `0750` root-owned directory, with `companion-ui` as the allowed group.
 
 ## Installed interfaces retained during migration
 

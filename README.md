@@ -30,7 +30,7 @@ in place.
 
 The [provisioning USB](docs/provisioning-usb.md) now provides the path to root
 remote access, hardware auditing and a persistent management installation on
-the Dell. Alpine Linux is the retained kernel and hardware foundation for Companion.
+the Dell. Alpine Linux is the retained kernel and hardware foundation for Heurism.
 The UEFI framebuffer experiment below remains available in its boot menu.
 
 The Dell's 512 GB SSD now contains the management system. Physical SSD boot
@@ -69,7 +69,7 @@ evidence, versioned releases, automatic failed-UI fallback and remaining limits.
 ## Optional kernel research
 
 These experiments are retained as a learning track, not prerequisites for the
-Companion product or a planned replacement for the Dell's Linux installation.
+Heurism product or a planned replacement for the Dell's Linux installation.
 The [native kernel](docs/native-kernel-verification.md) boots through our own
 EFI loader in QEMU, exits firmware boot services, draws Companion and owns
 exceptions, paging, page allocation and timer interrupts. It also validates ACPI
@@ -177,7 +177,7 @@ Physical SSD-independent management remains unproven.
 | `platform/arm64/` | Future port boundary; no implementation yet |
 | `drivers/` | Future hardware drivers |
 | `userspace/` | Future services and applications |
-| `ui/` | Current framebuffer renderer; future Companion interface |
+| `ui/` | Experimental framebuffer renderer; future Heurism research interface |
 | `tools/` | Build, inventory and emulator scripts |
 | `tests/` | Actual PE image checks and C tests with mock firmware |
 | `docs/` | Architecture, hardware facts, milestones and evidence |

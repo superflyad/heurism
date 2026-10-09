@@ -1,4 +1,4 @@
-"""Dedicated Companion Hyper-V target; never imports or contacts the Dell helper.
+"""Dedicated Heurism development VM; never imports or contacts the Dell helper.
 
 Uses the owner's already pinned primeserver/prime-linux SSH aliases. Guest keys
 are separate from Dell keys. Hyper-V operations are restricted to CompanionDev.
@@ -160,7 +160,7 @@ def capture(name, surface='root', require_ui=False):
         raise ValueError('Invalid screenshot name')
     check_target()
     remote = '/var/lib/companion/desktop-stage/evidence/'+name+'.xwd'
-    selection = '-root' if surface == 'root' else '-id "$(xdotool search --onlyvisible --name ^Heurism$ | tail -1)"'
+    selection = '-root' if surface == 'root' else '-id "$(xdotool search --onlyvisible --name ^\\(Heurism\\|Companion\\)$ | tail -1)"'
     guest('mkdir -p /var/lib/companion/desktop-stage/evidence; export DISPLAY=:0; '
           'if test -r /run/heurism-desktop/Xauthority; then '
           'export XAUTHORITY=/run/heurism-desktop/Xauthority; '
