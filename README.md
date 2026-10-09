@@ -62,7 +62,8 @@ Inspiron 7506 2-in-1 as practice hardware (target 0). The aim is ownership of
 startup policy, system services, hardware controls, applications and interface.
 Linux supplies the kernel and device drivers. We are building and releasing the
 Heurism operating system around that foundation. See the [architecture](docs/architecture.md)
-and [product roadmap](docs/roadmap.md).
+and [product roadmap](docs/roadmap.md). The [OS checklist](docs/os-checklist.md)
+tracks the daily-use, security, recovery and hardware acceptance work.
 
 The installed [startup presentation](docs/startup-presentation.md) hides GRUB
 during normal management boot; Escape during the one-second window reveals

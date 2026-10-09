@@ -4,7 +4,8 @@ Heurism currently builds from Alpine packages and uses Xfce as the established
 desktop. Its shell, terminal, settings, control and release verification are C. The
 Dell is the primary physical target; the separate Hyper-V VM is the release
 proving ground. See [architecture](architecture.md),
-[current release](heurism-migration.md) and [security](security.md).
+[current release](heurism-migration.md), [security](security.md) and the
+[working OS checklist](os-checklist.md).
 
 | Area | Current state | Next useful acceptance |
 | --- | --- | --- |
