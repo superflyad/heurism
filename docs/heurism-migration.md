@@ -77,6 +77,31 @@ The C power guard accepts either exact old or new display label, but the Dell
 still displays `Companion Management`. No EFI loader path or protected file was
 changed.
 
+## NVRAM boundary, checked 2026-10-08
+
+The Dell still stores the 2,048-byte owner EFI image in the nonvolatile variable
+`CompanionExtensionImage01` under GUID
+`1d8ce97b-55e6-4b2e-9276-bb1e9b6615a1`. Its live attributes are 7 and its
+payload SHA256 is still
+`b89ffa86d43a68a5296ed762702b25617d805e29a15f1f596dc6aed2f0d0151a`.
+The separate `CompanionNvStartup01` variable has attributes 6; it is a volatile
+startup diagnostic, not another persistent copy of the image.
+
+The SSD `Driver0001` bootstrap reads the exact `CompanionExtensionImage01`
+name in `boot/nv_startup.c`, verifies the stored image and executes the retrieved
+bytes. It has an embedded SSD fallback. Renaming or deleting the persistent
+variable alone would stop NVRAM image execution even if the normal Linux boot
+still succeeded through that fallback. The current bootstrap also resides on
+the SSD, so this arrangement does not provide SSD-independent startup.
+
+No owner variable, EFI driver, DriverOrder or payload bytes were changed during
+the Heurism runtime migration. A future firmware-layer rename needs a tested
+bootstrap that can read both names, a matching new variable and verified image,
+isolated VM fallback tests, protected-file manifest updates, and a guarded Dell
+boot with the old path available for recovery before any old variable is
+removed. Product UI and management now say Heurism; this firmware compatibility
+identifier still says Companion.
+
 ## Installed interfaces retained during migration
 
 The protected EFI loader, SSD kernel and recovery paths, Boot0005 display
