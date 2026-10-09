@@ -34,6 +34,13 @@ so its controls do not bypass Heurism's checked power path. See
 
 The active VM release is selected by `/opt/heurism/native/current` and is
 `/opt/heurism/native/releases/heurism-os-20261009T015910Z-3115`.
+The separate fresh-image candidate uses `install-image-vm.sh` during image
+construction. It seals the compiled C binaries before first boot, installs
+the active C services and provides the Xfce-to-C-workspace startup fallback.
+Its verified release is
+`/opt/heurism/native/releases/heurism-os-image-20261009T145632Z` on the
+isolated `HeurismCandidate` VM; it has not replaced the existing development
+VM or Dell release. See [system base](../../docs/heurism-system-base.md).
 `install-native-vm.sh assemble` builds a versioned, hashed candidate;
 `activate` replaces the VM's OpenRC desktop and control scripts, waits for C UI
 health, and restores the previous scripts and release on failure. The native

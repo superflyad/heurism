@@ -106,23 +106,44 @@ def source_archive():
     return archive
 
 
+def native_archive():
+    OUT.mkdir(parents=True, exist_ok=True)
+    archive = OUT/'native.tar.gz'
+    source = REPO/'userspace/native'
+    with tarfile.open(archive, 'w:gz') as stream:
+        for path in sorted(source.iterdir()):
+            if not path.is_file() or not (path.name == 'Makefile' or
+                    path.suffix in ('.c', '.h', '.sh', '.initd', '.desktop', '.xml')):
+                continue
+            info = stream.gettarinfo(str(path), arcname='native/'+path.name)
+            info.uid = info.gid = 0
+            info.mtime = 0
+            data = path.read_bytes().replace(b'\r\n', b'\n')
+            import io
+            info.size = len(data)
+            stream.addfile(info, io.BytesIO(data))
+    return archive
+
+
 def build():
     KEYS.mkdir(parents=True, exist_ok=True)
     key = KEYS/'client_ed25519'
     if not key.exists():
         call(['ssh-keygen', '-q', '-t', 'ed25519', '-N', '', '-C', 'companion-prime-vm', '-f', str(key)])
-    archive = source_archive()
+    native = native_archive()
     stage = '/var/lib/companion-vm-build/'+datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%SZ')
     call(['ssh', 'prime-linux', 'sudo -n mkdir -p '+stage+' && sudo -n chown ubuntu:ubuntu '+stage])
-    for source, name in [(archive, 'desktop.tar.gz'), (key.with_suffix('.pub'), 'client.pub'),
+    for source, name in [(native, 'native.tar.gz'), (key.with_suffix('.pub'), 'client.pub'),
                          (REPO/'tools/build-hyperv-guest.sh', 'build.sh'),
                          (REPO/'platform/heurism/os-release', 'heurism-os-release'),
                          (REPO/'platform/heurism/upstream-release', 'heurism-upstream-release'),
+                         (REPO/'platform/heurism/wallpaper.svg', 'heurism-wallpaper.svg'),
                          (REPO/'platform/heurism/vm-packages.list', 'heurism-vm-packages.list'),
                          (REPO/'platform/hyperv/companion-watch', 'companion-watch'),
                          (REPO/'platform/hyperv/watch.initd', 'watch.initd')]:
         call(['scp', str(source), 'prime-linux:'+stage+'/'+name])
-    (OUT/'builder.json').write_text(json.dumps({'stage': stage, 'source_sha256': hashlib.sha256(archive.read_bytes()).hexdigest()}, indent=2))
+    (OUT/'builder.json').write_text(json.dumps({'stage': stage,
+        'native_sha256': hashlib.sha256(native.read_bytes()).hexdigest()}, indent=2))
     call(['ssh', 'prime-linux', 'sudo -n bash '+stage+'/build.sh '+stage], timeout=1200)
     # Building a candidate must not replace the running VM's trusted host pin.
     call(['scp', 'prime-linux:'+stage+'/guest-host.pub', str(OUT/'image-host.pub')])

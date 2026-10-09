@@ -21,24 +21,48 @@ packages, the Xfce session or the image build process Heurism-native by itself.
 
 ## Build ownership
 
-`platform/heurism/vm-packages.list` is the direct package selection for a new
-Hyper-V VM image. `tools/prime-vm.py` stages it and `tools/build-hyperv-guest.sh`
-checks its hash and package names before calling `apk`. The image builder still
-starts from an Alpine 3.24.2 minirootfs and Alpine 3.24 repositories. It first
-installs `linux-firmware-none`, then the profile's 37 direct packages. The
-installed image gets Heurism identity and upstream provenance at image build
-time. This builder change has had syntax and source checks; a fresh candidate
-image has not yet been built or booted from this revision.
+`platform/heurism/vm-packages.list` selects 45 direct packages for the new
+Hyper-V VM image. `tools/prime-vm.py` stages the package profile, C runtime
+source, system identity and wallpaper. `tools/build-hyperv-guest.sh` verifies
+staged hashes and package names before using `apk`. It starts from the pinned
+Alpine 3.24.2 minirootfs and Alpine 3.24 repositories, installs
+`linux-firmware-none`, compiles the C runtime with temporary build packages,
+and seals that release before first boot with
+`userspace/native/install-image-vm.sh`. The image starts SSH, the independent
+watch service, C control and the Xfce user session. An unhealthy Xfce session
+falls back to the C workspace. It does not install the old Python/Tk desktop.
+Onboard is an upstream application that pulls in Python 3; no Heurism runtime
+component uses Python. The image records all installed package versions and
+the base/source/profile hashes under `/etc/heurism`; these records and the
+wallpaper are in its protected manifest. The installed inventory is a record,
+not a repository lock. The Alpine v3.24 URLs do not pin every package build.
 
-The current image builder also stages the historical Python/Tk desktop as a
-base and relies on a later C release installation. The live VM and Dell use
-the C desktop/control release; Python/Tk remains sealed recovery. Removing
-that build-time gap requires a Heurism image recipe that installs a sealed C
-release before first boot, with management and rollback verified in an
-isolated VM. A package lock or snapshot repository is also needed for repeatable
-updates; the current v3.24 repository URLs alone do not pin every package build.
+The candidate image SHA256 is
+`5bce37d38af77435b65e99f999284a9560c70216fa08e38ebfd4bfc9882f9e8c`.
+It is an isolated test artifact, not a public image: its root authorized key
+and generated SSH host private key are baked into the VHDX. A distributable
+image needs per-install key provisioning and a repeatable package source.
 
 ## Verified live state
+
+The fresh image booted in the separate `HeurismCandidate` Hyper-V VM from an
+exact hash-checked disk. First boot `6edd8116-4960-4bc0-9d64-392e6f304c19`
+passed C release verification, Xfce UID-1000 health, actual 1280x800
+framebuffer inspection with the Heurism wallpaper, SSH/watch/control services,
+checked power, protected-file hashes and exact installed-package inventory.
+The old Tk desktop and `python3-tkinter` are absent. An invalid session
+selection started the painted C workspace with Heurism branding while root
+management stayed healthy. A UID-1000 C shell created a persistent file, and
+the C graphical terminal opened an X11 window. Restoring the session mode
+returned Xfce. Checked C reboot returned fresh boot
+`9ba17212-8231-4d66-8863-1a5cfb3c4935` with the same sealed release,
+healthy services, power/protected checks and the user file intact. Checked C
+poweroff reached the Hyper-V Off state; the original `CompanionDev` VM was
+then restarted on fresh boot `9b727da7-1024-40dd-97b8-5fc3186c7a42` with
+its existing C release and Xfce health. Its pretest checkpoint is
+`Heurism-before-image-candidate-20261009` (UUID
+`a90e8c9e-73d7-4967-bb17-fb3eb5e66e1b`). The candidate was never installed
+on the Dell.
 
 The VM passed the identity installer and a checked fresh boot
 `82e62200-48b6-44f5-9562-78f8c55ad056`. Its Heurism C release, Xfce health,
@@ -57,13 +81,11 @@ firmware protocol names remain recovery interfaces.
 
 ## Next system release gates
 
-1. Build a fresh Heurism VM candidate from the checked package profile and a
-   sealed C release, with no active Python/Tk startup path.
-2. Boot that candidate in isolation and prove SSH/watch/control, desktop first
-   paint, power, file workflows and protected-file checks across cold start and
-   reboot. Preserve the running VM's pinned SSH host identity.
-3. Define a Heurism system release number, package lock or repository snapshot,
-   signed update inputs, and atomic rollback for base packages and C runtime.
+1. Provide first-boot SSH key provisioning and a package lock or repository
+   snapshot so a public image can be reproduced and safely redistributed.
+2. Prove a whole-system update and rollback path, including failed package
+   updates, without losing independent management or the previous C release.
+3. Define a Heurism system release number and signed update inputs.
 4. Promote the proven system release to the Dell through its guarded installer,
    retaining SSD rescue, authenticated root management and the current boot
    orders. Do not use unverified native kernel or USB drivers as the Dell default.

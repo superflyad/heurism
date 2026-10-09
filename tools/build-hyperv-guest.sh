@@ -5,11 +5,12 @@ set -euo pipefail
 stage=${1:?staging directory required}
 case "$stage" in /var/lib/companion-vm-build/*) ;; *) echo 'Invalid build directory' >&2; exit 1;; esac
 test "$(id -u)" = 0
-test -f "$stage/desktop.tar.gz"
+test -f "$stage/native.tar.gz"
 test -f "$stage/client.pub"
 test "$(sha256sum "$stage/heurism-os-release" | cut -d ' ' -f 1)" = 4cb2272e2f85fe61c37fab906149fb8624035ef38847d5b5439ba8e1d7bbb367
 test "$(sha256sum "$stage/heurism-upstream-release" | cut -d ' ' -f 1)" = 1eb5561b4eae9962ff0f16ba7900cdc1f444535490f4863954e5bceab26beab3
-test "$(sha256sum "$stage/heurism-vm-packages.list" | cut -d ' ' -f 1)" = e1984fb7bf2be0544a6634bf9d03ebf13d5bd5c258dc6558997d13da54a43e60
+test "$(sha256sum "$stage/heurism-wallpaper.svg" | cut -d ' ' -f 1)" = d65fab95b78ecacf6f744d08c43048b5b56fb62007fc148796f4b8cc878ca8fb
+test "$(sha256sum "$stage/heurism-vm-packages.list" | cut -d ' ' -f 1)" = 897013821b6ebce630e3b2ec792d5031eced35bc6a387ce52503158b84d4530d
 test ! -e "$stage/guest.raw"
 root="$stage/root"
 mkdir -p "$root"
@@ -33,7 +34,7 @@ curl -fL --retry 3 "$url" -o "$stage/$base"
 curl -fL --retry 3 "$url.sha256" -o "$stage/$base.sha256"
 (cd "$stage" && sha256sum -c "$base.sha256")
 tar -xzf "$stage/$base" -C "$root"
-mkdir -p "$root"/{dev,proc,sys,boot/efi,etc/companion,var/lib/companion/desktop-stage}
+mkdir -p "$root"/{dev,proc,sys,boot/efi,etc/companion,var/lib/companion/desktop-stage/evidence}
 mount "${loop}p1" "$root/boot/efi"
 mount -t proc proc "$root/proc"
 mount -t sysfs sysfs "$root/sys"
@@ -47,7 +48,7 @@ while IFS= read -r package || [ -n "$package" ]; do
     [[ "$package" =~ ^[a-z0-9][a-z0-9+_.-]*$ ]] || { echo "Invalid package name: $package" >&2; exit 1; }
     packages+=("$package")
 done < "$stage/heurism-vm-packages.list"
-test "${#packages[@]}" = 37
+test "${#packages[@]}" = 45
 chroot "$root" apk add "${packages[@]}"
 test -L "$root/etc/os-release"
 test "$(readlink "$root/etc/os-release")" = ../usr/lib/os-release
@@ -57,6 +58,8 @@ rm "$root/etc/os-release"
 install -m 644 "$stage/heurism-os-release" "$root/etc/os-release"
 install -d -m 755 "$root/etc/heurism"
 install -m 644 "$stage/heurism-upstream-release" "$root/etc/heurism/upstream-release"
+install -d -m 755 "$root/usr/share/heurism"
+install -m 644 "$stage/heurism-wallpaper.svg" "$root/usr/share/heurism/wallpaper.svg"
 printf 'heurism-vm\n' > "$root/etc/hostname"
 printf '{"platform":"hyperv-dev"}\n' > "$root/etc/companion/platform.json"
 chmod 644 "$root/etc/companion/platform.json"
@@ -106,19 +109,39 @@ chroot "$root" ssh-keygen -q -t ed25519 -N '' -f /etc/ssh/ssh_host_ed25519_key
 # Local consoles are recoverable without enabling password-based network access.
 chroot "$root" passwd -d root
 cp "$root/etc/ssh/ssh_host_ed25519_key.pub" "$stage/guest-host.pub"
-cp "$stage/desktop.tar.gz" "$root/var/lib/companion/desktop-stage/desktop.tar.gz"
-mkdir -p "$root/var/lib/companion/desktop-stage/source"
-tar -xzf "$stage/desktop.tar.gz" -C "$root/var/lib/companion/desktop-stage/source"
-chroot "$root" sh /var/lib/companion/desktop-stage/source/install.sh
+chroot "$root" adduser -D -h /var/lib/companion/desktop-user -s /sbin/nologin companion-ui
+chroot "$root" addgroup companion-ui audio
+chroot "$root" addgroup companion-ui video
+test "$(chroot "$root" id -u companion-ui)" = 1000
+install -d -m 755 "$root/var/lib/heurism/image-source"
+tar -xzf "$stage/native.tar.gz" -C "$root/var/lib/heurism/image-source"
+chroot "$root" apk add --virtual .heurism-build-deps build-base pkgconf libxft-dev libvterm-dev json-c-dev openssl-dev
+chroot "$root" make -C /var/lib/heurism/image-source/native clean all
+chroot "$root" sh /var/lib/heurism/image-source/native/install-image-vm.sh
+chroot "$root" apk del .heurism-build-deps
+if chroot "$root" apk info -e python3-tkinter >/dev/null; then
+    echo 'Legacy Tk runtime must not be in the C-first image' >&2
+    exit 1
+fi
+chroot "$root" /opt/heurism/native/current/heurism-release verify
+chroot "$root" /opt/heurism/native/current/heurism-release --version
+chroot "$root" apk info -v | LC_ALL=C sort > "$root/etc/heurism/packages.installed"
+printf 'BASE_MINIROOTFS_SHA256=%s\nNATIVE_SOURCE_SHA256=%s\nPACKAGE_PROFILE_SHA256=%s\n' \
+    "$(sha256sum "$stage/$base" | cut -d ' ' -f 1)" \
+    "$(sha256sum "$stage/native.tar.gz" | cut -d ' ' -f 1)" \
+    "$(sha256sum "$stage/heurism-vm-packages.list" | cut -d ' ' -f 1)" \
+    > "$root/etc/heurism/build-provenance"
+rm -rf "$root/var/lib/heurism/image-source"
+install -d -m 755 "$root/usr/local/sbin"
 install -m 755 "$stage/companion-watch" "$root/usr/local/sbin/companion-vm-watch"
 install -m 755 "$stage/watch.initd" "$root/etc/init.d/companion-watch"
 for service in devfs dmesg udev; do chroot "$root" rc-update add "$service" sysinit; done
 for service in modules hwclock swap hostname sysctl bootmisc syslog fsck root localmount udev-trigger udev-settle; do chroot "$root" rc-update add "$service" boot; done
-for service in networking sshd dbus companion-watch companion-control companion-desktop; do
+for service in networking sshd dbus companion-watch heurism-control heurism-desktop; do
     chroot "$root" rc-update add "$service" default
 done
 for service in mount-ro killprocs savecache; do chroot "$root" rc-update add "$service" shutdown; done
-chroot "$root" sh -c 'sha256sum /boot/vmlinuz-lts /boot/initramfs-lts /boot/grub/grub.cfg /boot/efi/EFI/BOOT/BOOTX64.EFI /etc/fstab /etc/network/interfaces /etc/ssh/sshd_config /etc/ssh/ssh_host_ed25519_key.pub /etc/init.d/sshd /etc/init.d/companion-watch /usr/local/sbin/companion-vm-watch /etc/companion/platform.json /etc/os-release /etc/heurism/upstream-release > /etc/companion/vm-protected.sha256'
+chroot "$root" sh -c 'sha256sum /boot/vmlinuz-lts /boot/initramfs-lts /boot/grub/grub.cfg /boot/efi/EFI/BOOT/BOOTX64.EFI /etc/fstab /etc/network/interfaces /etc/ssh/sshd_config /etc/ssh/ssh_host_ed25519_key.pub /etc/init.d/sshd /etc/init.d/companion-watch /etc/init.d/heurism-control /etc/init.d/heurism-desktop /usr/local/sbin/companion-vm-watch /usr/share/heurism/wallpaper.svg /etc/companion/platform.json /etc/os-release /etc/heurism/upstream-release /etc/heurism/packages.installed /etc/heurism/build-provenance > /etc/companion/vm-protected.sha256'
 chmod 644 "$root/etc/companion/vm-protected.sha256"
 sync
 cleanup

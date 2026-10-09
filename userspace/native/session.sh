@@ -27,5 +27,10 @@ if /opt/heurism/native/current/heurism-session-config; then
     trap - TERM INT HUP
     if [ ! -e /run/heurism-desktop/startup-failed ]; then exit "$result"; fi
 fi
-echo 'Native session failed; starting sealed legacy recovery release' >&2
-exec /opt/companion/desktop/session.sh
+if [ -x /opt/companion/desktop/session.sh ]; then
+    echo 'Native session failed; starting sealed legacy recovery release' >&2
+    umask 022
+    exec /opt/companion/desktop/session.sh
+fi
+echo 'No legacy graphical recovery release; root SSH/watch remain independent' >&2
+exit 1

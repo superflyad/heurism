@@ -18,12 +18,12 @@ if [ "$(cat /sys/class/dmi/id/sys_vendor)" = 'Dell Inc.' ] &&
     test "$applied" = 1
 fi
 
-mode=xfce
-if [ -r /etc/companion/native-session-mode ]; then
-    mode=$(cat /etc/companion/native-session-mode)
-fi
-if [ "$mode" = native ]; then
-    openbox --config-file "$release/openbox.xml" >"$state/openbox-native.log" 2>&1 &
+native_session() {
+    if [ "${1:-}" = replace ]; then
+        openbox --replace --config-file "$release/openbox.xml" >"$state/openbox-native.log" 2>&1 &
+    else
+        openbox --config-file "$release/openbox.xml" >"$state/openbox-native.log" 2>&1 &
+    fi
     wm=$!
     ready=0
     for attempt in 1 2 3 4 5 6 7 8 9 10; do
@@ -43,8 +43,19 @@ if [ "$mode" = native ]; then
     kill "$wm" 2>/dev/null || true
     wait "$wm" 2>/dev/null || true
     exit "$result"
+}
+
+mode=xfce
+if [ -r /etc/companion/native-session-mode ]; then
+    mode=$(cat /etc/companion/native-session-mode)
 fi
-test "$mode" = xfce || { echo "Unsupported Heurism session: $mode" >&2; exit 1; }
+if [ "$mode" = native ]; then
+    native_session
+fi
+if [ "$mode" != xfce ]; then
+    echo "Unsupported Heurism session: $mode; starting C workspace" >&2
+    native_session
+fi
 for program in xfce4-session xfwm4 xfce4-panel xfdesktop thunar mousepad; do
     command -v "$program" >/dev/null
 done
@@ -77,10 +88,35 @@ done
 if [ "$ready" = 0 ]; then
     kill "$session" 2>/dev/null || true
     wait "$session" 2>/dev/null || true
-    echo 'Xfce session did not become healthy' >&2
-    exit 1
+    echo 'Xfce session did not become healthy; starting C workspace' >&2
+    native_session replace
 fi
 sh "$release/xfce-power-panel.sh" >>"$state/xfce-panel.log" 2>&1
+if [ -r /usr/share/heurism/wallpaper.svg ]; then
+    for attempt in 1 2 3 4 5; do
+        if xdotool search --class xfdesktop >/dev/null 2>&1; then
+            break
+        fi
+        sleep 1
+    done
+    monitor=$(xrandr --listmonitors 2>/dev/null | awk 'NR==2 {print $NF}')
+    case "$monitor" in
+        ''|*[!A-Za-z0-9_-]*) echo 'Cannot identify Xfce monitor for wallpaper' >&2 ;;
+        *)
+            backdrop=/backdrop/screen0/monitor${monitor}/workspace0
+            image=$(xfconf-query -c xfce4-desktop -p "$backdrop/last-image" 2>/dev/null || true)
+            if [ -z "$image" ]; then
+                xfconf-query -c xfce4-desktop -p "$backdrop/last-image" -n -t string \
+                    -s /usr/share/heurism/wallpaper.svg || true
+                xfconf-query -c xfce4-desktop -p "$backdrop/image-style" -n -t int -s 5 || true
+                image=/usr/share/heurism/wallpaper.svg
+            fi
+            if [ "$image" = /usr/share/heurism/wallpaper.svg ]; then
+                sleep 5
+                xfdesktop --reload >>"$state/xfce-session.log" 2>&1 || true
+            fi ;;
+    esac
+fi
 umask 077
 resolved=$(readlink -f "$release")
 boot=$(cat /proc/sys/kernel/random/boot_id)
