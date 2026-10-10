@@ -5,7 +5,7 @@ The VM and Dell both passed checked reboot into their new sealed releases;
 see [heurism-migration.md](heurism-migration.md). The release IDs and command
 names below record earlier Companion milestones and remain historical evidence.
 The development VM currently runs
-`/opt/heurism/native/releases/heurism-os-20261010T145206Z-34622` with
+`/opt/heurism/native/releases/heurism-os-20261010T150201Z-40393` with
 the C workspace, searchable C launcher, original Heurism window frames and
 [interactive C shell job control](shell-job-control.md). See
 [the visual pass](heurism-look.md) and [launcher](heurism-launcher.md). The Dell later

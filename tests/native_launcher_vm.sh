@@ -46,6 +46,7 @@ su -s /bin/sh -c "HOME=$work DISPLAY=:91 XAUTHORITY=/dev/null XDG_RUNTIME_DIR=$w
 desktop=$!
 sleep 3
 export DISPLAY=:91 XAUTHORITY=/dev/null
+xwd -root -silent -out "$work/workspace.xwd"
 xdotool mousemove 180 748 click 1
 sleep 2
 launcher=$(xdotool search --name '^Heurism Launcher$' | tail -n 1)
@@ -60,7 +61,17 @@ sleep 1
 xwd -root -silent -out "$work/launcher.xwd"
 xdotool key Return
 sleep 2
-xdotool search --name 'Heurism C Terminal' >/dev/null
+terminal=$(xdotool search --name 'Heurism C Terminal' | tail -n 1)
+test -n "$terminal"
+if xdotool search --name '^Heurism Launcher$' >/dev/null 2>&1; then exit 1; fi
+xdotool windowactivate --sync "$terminal"
+xdotool key --clearmodifiers super+space
+sleep 1
+launcher=$(xdotool search --name '^Heurism Launcher$' | tail -n 1)
+test -n "$launcher"
+xdotool windowactivate --sync "$launcher"
+xdotool key Escape
+sleep 1
 if xdotool search --name '^Heurism Launcher$' >/dev/null 2>&1; then exit 1; fi
 for action in settings power; do
     xdotool mousemove 180 748 click 1
@@ -80,4 +91,4 @@ xdotool windowactivate --sync "$launcher"
 xdotool key Escape
 sleep 1
 if xdotool search --name '^Heurism Launcher$' >/dev/null 2>&1; then exit 1; fi
-echo "C launcher interactions passed; isolated capture: $work/launcher.xwd"
+echo "C launcher dock, Super+Space, search and app actions passed; captures: $work/workspace.xwd $work/launcher.xwd"

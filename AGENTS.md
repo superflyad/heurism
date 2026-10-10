@@ -1,5 +1,22 @@
 # Current product direction
 
+On 2026-10-10 the VM C workspace gained a process-scoped Super+Space launcher
+shortcut. It opens the existing searchable C launcher from a focused Terminal;
+Xfce recovery keyboard settings remain unchanged. The tracked isolated Xvfb
+test caught and fixed a launcher focus timing failure before activation. The
+active sealed release is
+`/opt/heurism/native/releases/heurism-os-20261010T150201Z-40393`.
+Checked C reboot returned fresh boot `b822a784-1798-4585-8445-bcf25556e18b`
+with verified C workspace, theme, SSH/watch/control and no shortcut grab
+warning. Build packages were removed. The prechange checkpoint is
+`Heurism-before-keyboard-launcher-20261010`, UUID
+`14e5e9c1-f440-4d5c-97ae-f02cab75033c`; the ready checkpoint is
+`Heurism-keyboard-launcher-ready-20261010`, UUID
+`bb5c3d12-32ab-47aa-9a13-c30241b6f3d1`. The Dell was not changed.
+See `docs/heurism-launcher.md` and the 1280x800 preview at
+`build/prime-vm/heurism-workspace-shortcut.png`. The full distinct desktop
+goal remains open.
+
 On 2026-10-10 the VM C workspace gained a searchable C/X11 launcher window
 opened by the Heurism dock button. Search, arrow/Enter selection, Settings,
 Power, Escape and repeated-click reuse passed an isolated Xvfb UI test; see

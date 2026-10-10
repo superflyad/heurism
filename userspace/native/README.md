@@ -22,6 +22,7 @@ The development VM now selects `heurism` in `/etc/companion/native-session-mode`
 the visible workspace, searchable launcher, task dock, Files, Editor, terminal and shell
 are Heurism C programs. Xfwm4 still manages windows, Xfce's PAM screensaver
 locks the session, and Alpine Linux supplies the kernel and Unix services.
+The dock button and Super+Space open the same launcher from the VM workspace.
 The Dell still defaults to Alpine Xfce 4.20 with Thunar and Mousepad. In that
 recovery session, Heurism Settings and the C terminal have Xfce application launchers.
 The top-right red power icon and Applications > System > Heurism Power open
@@ -37,7 +38,7 @@ separate from either user session. See [VM shell evidence](../../docs/heurism-sh
 and [Xfce recovery](../../docs/xfce-bridge.md).
 
 The active development VM release is selected by `/opt/heurism/native/current`
-and is `/opt/heurism/native/releases/heurism-os-20261010T145206Z-34622`.
+and is `/opt/heurism/native/releases/heurism-os-20261010T150201Z-40393`.
 See [the launcher evidence](../../docs/heurism-launcher.md).
 The separate fresh-image candidate uses `install-image-vm.sh` during image
 construction. It seals the compiled C binaries before first boot, installs

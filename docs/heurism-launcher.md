@@ -34,3 +34,32 @@ This is a focused launcher for known actions, not an index of installed apps
 or files. The VM still uses Xfwm4 on Xorg, and the physical Dell remains on
 its established Xfce desktop. The existing shared UID-1000 X11 and disk
 security limits remain.
+
+## Keyboard access, 2026-10-10
+
+The Heurism C workspace now grabs Super+Space while its session is running.
+It opens or raises the same launcher from a focused application. The grab is
+released with the C workspace process, so the Xfce recovery session's saved
+keyboard shortcuts are unchanged. The workspace shows the shortcut beside its
+other keyboard hints. If another client owns the grab, the desktop logs the
+conflict and leaves the dock launcher available.
+
+`tests/native_launcher_vm.sh` now activates a C Terminal, sends Super+Space
+from that focused window, verifies the launcher, and then checks Escape and
+the existing search actions. A first candidate exposed a focus timing error
+when the launcher mapped. The final C code requests activation through the
+window manager's existing X11 active-window route; the revised test passed.
+The 1280×800 workspace capture at
+`build/prime-vm/heurism-workspace-shortcut.png` shows the hint without clipping.
+
+The prechange checkpoint is `Heurism-before-keyboard-launcher-20261010`
+(UUID `14e5e9c1-f440-4d5c-97ae-f02cab75033c`). The guarded VM installer
+activated sealed release
+`/opt/heurism/native/releases/heurism-os-20261010T150201Z-40393` after its
+existing C shell, app, control and release tests plus the isolated launcher
+test. Checked C reboot returned fresh boot
+`b822a784-1798-4585-8445-bcf25556e18b` with healthy C workspace, theme,
+SSH, watch and control. No shortcut grab warning appeared in the live workspace
+log. Build packages were removed. The ready checkpoint is
+`Heurism-keyboard-launcher-ready-20261010` (UUID
+`bb5c3d12-32ab-47aa-9a13-c30241b6f3d1`). The Dell was not changed.

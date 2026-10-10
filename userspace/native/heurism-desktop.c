@@ -88,6 +88,17 @@ static const struct launcher_item launcher_items[] = {
     {"Power", "Restart or shut down", SHOW_POWER}
 };
 
+static int (*previous_x_error)(Display *, XErrorEvent *);
+static bool shortcut_grab_failed;
+
+static int shortcut_error(Display *display, XErrorEvent *error) {
+    if (error->error_code == BadAccess) {
+        shortcut_grab_failed = true;
+        return 0;
+    }
+    return previous_x_error ? previous_x_error(display, error) : 0;
+}
+
 static unsigned long rgb(struct desktop *d, unsigned red, unsigned green, unsigned blue) {
     unsigned long parts[3] = {red, green, blue};
     unsigned long masks[3] = {d->visual->red_mask, d->visual->green_mask, d->visual->blue_mask};
@@ -432,7 +443,8 @@ static void render_workspace(struct desktop *d) {
     button(d, d->background, x + 360, 585, 168, 48, "Keyboard", LAUNCH_KEYBOARD, 0, false);
     button(d, d->background, right, 585, 168, 48, "System", SHOW_OVERVIEW, 0, false);
     label(d, d->background, x, d->height - 126, d->font_small,
-          "F1 System    F2 Settings    Alt+Tab Windows", 157, 176, 198);
+          "Super+Space Launcher    F1 System    F2 Settings    Alt+Tab Windows",
+          157, 176, 198);
 }
 
 static const char *bios_name(int index) {
@@ -807,9 +819,7 @@ static void launch_self(struct desktop *d, const char *argument) {
     launch(d, path, argument);
 }
 
-static void activate_task(struct desktop *d, int index) {
-    if (index < 0 || index >= d->task_count) return;
-    Window window = d->tasks[index].window;
+static void activate_window(struct desktop *d, Window window) {
     XMapRaised(d->display, window);
     XEvent event = {0};
     event.xclient.type = ClientMessage;
@@ -819,6 +829,11 @@ static void activate_task(struct desktop *d, int index) {
     event.xclient.data.l[0] = 1;
     XSendEvent(d->display, RootWindow(d->display, d->screen), False,
                SubstructureRedirectMask | SubstructureNotifyMask, &event);
+}
+
+static void activate_task(struct desktop *d, int index) {
+    if (index >= 0 && index < d->task_count)
+        activate_window(d, d->tasks[index].window);
 }
 
 static void run_action(struct desktop *d, enum action action, int index) {
@@ -856,8 +871,7 @@ static void run_action(struct desktop *d, enum action action, int index) {
             XWindowAttributes attributes;
             if (owner && XGetWindowAttributes(d->display, owner, &attributes) &&
                 attributes.map_state == IsViewable) {
-                XRaiseWindow(d->display, owner);
-                XSetInputFocus(d->display, owner, RevertToPointerRoot, CurrentTime);
+                activate_window(d, owner);
             } else launch_self(d, "--launcher");
         }
         break;
@@ -1055,6 +1069,44 @@ static void set_window_type(struct desktop *d, Window window, Atom type) {
                     (unsigned char *)&type, 1);
 }
 
+static void install_launcher_shortcut(struct desktop *d) {
+    KeyCode space = XKeysymToKeycode(d->display, XK_space);
+    if (!space) return;
+    unsigned numlock = 0;
+    KeyCode number = XKeysymToKeycode(d->display, XK_Num_Lock);
+    XModifierKeymap *modifiers = XGetModifierMapping(d->display);
+    if (modifiers) {
+        for (int modifier = 0; modifier < 8; modifier++)
+            for (int slot = 0; slot < modifiers->max_keypermod; slot++)
+                if (number && modifiers->modifiermap[modifier * modifiers->max_keypermod + slot]
+                              == number) numlock |= 1u << modifier;
+        XFreeModifiermap(modifiers);
+    }
+    Window root = RootWindow(d->display, d->screen);
+    XSelectInput(d->display, root, KeyPressMask);
+    XSync(d->display, False);
+    previous_x_error = XSetErrorHandler(shortcut_error);
+    shortcut_grab_failed = false;
+    XGrabKey(d->display, space, Mod4Mask, root, False, GrabModeAsync, GrabModeAsync);
+    XSync(d->display, False);
+    bool base_failed = shortcut_grab_failed;
+    if (!base_failed) {
+        unsigned extras[] = {LockMask, numlock, LockMask | numlock};
+        for (size_t i = 0; i < sizeof extras / sizeof extras[0]; i++) {
+            if (!extras[i]) continue;
+            bool duplicate = false;
+            for (size_t j = 0; j < i; j++) if (extras[i] == extras[j]) duplicate = true;
+            if (!duplicate)
+                XGrabKey(d->display, space, Mod4Mask | extras[i], root, False,
+                         GrabModeAsync, GrabModeAsync);
+        }
+        XSync(d->display, False);
+    }
+    XSetErrorHandler(previous_x_error);
+    if (shortcut_grab_failed)
+        fprintf(stderr, "Heurism launcher: Super+Space grab unavailable for some modifiers\n");
+}
+
 static bool setup_x(struct desktop *d) {
     d->display = XOpenDisplay(NULL);
     if (!d->display) return false;
@@ -1141,8 +1193,7 @@ static bool setup_x(struct desktop *d) {
     if (d->launcher_mode) {
         Atom selection = XInternAtom(d->display, "_HEURISM_LAUNCHER", False);
         XSetSelectionOwner(d->display, selection, d->background, CurrentTime);
-        XRaiseWindow(d->display, d->background);
-        XSetInputFocus(d->display, d->background, RevertToPointerRoot, CurrentTime);
+        activate_window(d, d->background);
         XFlush(d->display);
     }
     if (!d->settings_mode && !strcmp(DisplayString(d->display), ":0")) {
@@ -1193,7 +1244,7 @@ static int show_home(void) {
 int main(int argc, char **argv) {
     setlocale(LC_ALL, "");
     if (argc == 2 && !strcmp(argv[1], "--version")) {
-        puts("Heurism desktop 0.3 (C/X11/Xft)"); return 0;
+        puts("Heurism desktop 0.4 (C/X11/Xft)"); return 0;
     }
     if (argc == 2 && !strcmp(argv[1], "--home")) return show_home();
     struct desktop d = {.page = WORKSPACE, .control_socket = DEFAULT_SOCKET,
@@ -1219,6 +1270,7 @@ int main(int argc, char **argv) {
     else if (argc != 1) return fprintf(stderr, "usage: heurism-desktop [--settings|--launcher|--overview|--network|--power|--socket path]\n"), 2;
     signal(SIGCHLD, SIG_IGN);
     if (!setup_x(&d)) return fprintf(stderr, "heurism-desktop: X display unavailable\n"), 1;
+    if (!d.settings_mode) install_launcher_shortcut(&d);
     refresh_status(&d);
     refresh_page(&d);
     refresh_tasks(&d);
@@ -1243,6 +1295,11 @@ int main(int argc, char **argv) {
                 }
             } else if (event.type == KeyPress) {
                 KeySym key = XLookupKeysym(&event.xkey, 0);
+                if (!d.settings_mode && event.xkey.window == RootWindow(d.display, d.screen) &&
+                    key == XK_space && (event.xkey.state & Mod4Mask)) {
+                    run_action(&d, SHOW_MENU, 0);
+                    continue;
+                }
                 if (d.launcher_mode) {
                     int count = launcher_count(&d);
                     if (key == XK_Escape) run_action(&d, SHOW_WORKSPACE, 0);
