@@ -14,6 +14,8 @@
 #include <unistd.h>
 #include <fcntl.h>
 #include <glob.h>
+#include <dirent.h>
+#include <sys/stat.h>
 
 #define MAX_LINE 8192
 #define MAX_TEXT 16384
@@ -195,6 +197,149 @@ static void remember_line(struct history *history, const char *line, size_t leng
     history->lines[history->count++] = copy;
 }
 
+struct completion {
+    char *first;
+    size_t common, count;
+    bool directory;
+};
+
+static void completion_add(struct completion *matches, const char *name, bool directory) {
+    if (matches->first && !strcmp(matches->first, name)) return;
+    if (!matches->first) {
+        matches->first = strdup(name);
+        if (!matches->first) return;
+        matches->common = strlen(name);
+        matches->directory = directory;
+    } else {
+        size_t n = 0;
+        while (n < matches->common && name[n] && matches->first[n] == name[n]) n++;
+        matches->common = n;
+    }
+    matches->count++;
+}
+
+static void complete_directory(struct completion *matches, const char *directory,
+                               const char *prefix, bool executable_only,
+                               bool include_directories) {
+    DIR *stream = opendir(*directory ? directory : ".");
+    if (!stream) return;
+    size_t n = strlen(prefix), base = strlen(directory);
+    struct dirent *entry;
+    while ((entry = readdir(stream))) {
+        const char *name = entry->d_name;
+        if (strncmp(name, prefix, n) || (!n && name[0] == '.')) continue;
+        if (!strcmp(name, ".") || !strcmp(name, "..")) continue;
+        bool printable = true;
+        for (const unsigned char *s = (const unsigned char *)name; *s; s++)
+            if (*s < 32 || *s == 127) printable = false;
+        if (!printable) continue;
+        size_t length = base + strlen(name) + 2;
+        char *path = malloc(length);
+        if (!path) break;
+        snprintf(path, length, "%s/%s", *directory ? directory : ".", name);
+        struct stat info;
+        if (!stat(path, &info) &&
+            ((include_directories && S_ISDIR(info.st_mode)) ||
+             (S_ISREG(info.st_mode) && (!executable_only || !access(path, X_OK)))))
+            completion_add(matches, name, S_ISDIR(info.st_mode));
+        free(path);
+    }
+    closedir(stream);
+}
+
+static bool completion_escape(char *output, size_t capacity, size_t *used, const char *text,
+                              size_t count) {
+    for (size_t i = 0; i < count; i++) {
+        unsigned char ch = (unsigned char)text[i];
+        if (isspace(ch) || strchr("\\\"'$;|&<>*?[]#", ch)) {
+            if (*used + 1 >= capacity) return false;
+            output[(*used)++] = '\\';
+        }
+        if (*used + 1 >= capacity) return false;
+        output[(*used)++] = (char)ch;
+    }
+    return true;
+}
+
+/* Complete only an unquoted word at the line end. Ambiguous names extend to
+ * their common prefix; path lookup is read-only and never executes a match. */
+static bool complete_line(char *line, size_t capacity, size_t *length, size_t *cursor) {
+    if (*cursor != *length) return false;
+    size_t start = *cursor;
+    while (start && !isspace((unsigned char)line[start - 1]) &&
+           !strchr("|;&<>", line[start - 1])) start--;
+    if (start == *cursor) return false;
+    char *word = strndup(line + start, *cursor - start);
+    if (!word) return false;
+    if (strpbrk(word, "\\\"'$*?[]") || (word[0] == '~' && word[1] != '/')) {
+        free(word); return false;
+    }
+    bool command = true;
+    for (size_t i = 0; i < start; i++) {
+        if (strchr("|;&", line[i])) command = true;
+        else if (!isspace((unsigned char)line[i])) command = false;
+    }
+    struct completion matches = {0};
+    char *slash = strrchr(word, '/');
+    if (command && !slash) {
+        const char *builtins[] = {"cd", "pwd", "exit", "export", "unset",
+                                  "jobs", "fg", "bg", "help"};
+        for (size_t i = 0; i < sizeof builtins / sizeof builtins[0]; i++)
+            if (!strncmp(builtins[i], word, strlen(word)))
+                completion_add(&matches, builtins[i], false);
+        const char *path = getenv("PATH");
+        if (path) {
+            for (;;) {
+                const char *end = strchr(path, ':');
+                size_t size = end ? (size_t)(end - path) : strlen(path);
+                char *directory = strndup(path, size);
+                if (directory) {
+                    complete_directory(&matches, directory, word, true, false);
+                    free(directory);
+                }
+                if (!end) break;
+                path = end + 1;
+            }
+        }
+    } else {
+        char *directory = slash ? strndup(word, (size_t)(slash - word)) : strdup(".");
+        if (directory) {
+            if (!*directory) { free(directory); directory = strdup("/"); }
+            else if (directory[0] == '~' && directory[1] == '/') {
+                const char *home = getenv("HOME");
+                char *expanded = NULL;
+                if (home) {
+                    size_t size = strlen(home) + strlen(directory);
+                    expanded = malloc(size);
+                    if (expanded) snprintf(expanded, size, "%s%s", home, directory + 1);
+                }
+                free(directory); directory = expanded;
+            }
+            if (directory) complete_directory(&matches, directory,
+                                              slash ? slash + 1 : word, command, true);
+            free(directory);
+        }
+    }
+    size_t typed = strlen(slash ? slash + 1 : word);
+    char insert[MAX_LINE + 2];
+    size_t used = 0;
+    bool changed = false;
+    if (matches.count && matches.common >= typed &&
+        completion_escape(insert, sizeof insert, &used, matches.first + typed,
+                          matches.common - typed)) {
+        if (matches.count == 1) insert[used++] = matches.directory ? '/' : ' ';
+        if (*length + used + 1 < capacity && *length + used <= MAX_LINE) {
+            memcpy(line + *length, insert, used);
+            *length += used; *cursor = *length;
+            line[*length] = 0;
+            changed = used != 0;
+        }
+    }
+    free(matches.first);
+    free(word);
+    return changed;
+}
+
 /* Return 1 for a line, 0 for EOF, and -1 for an interrupted line. */
 static int read_interactive_line(char *line, size_t capacity, const char *prompt,
                                  struct history *history) {
@@ -227,7 +372,9 @@ static int read_interactive_line(char *line, size_t capacity, const char *prompt
         }
         if (byte == 3) { interrupted = 1; result = -1; break; }
         if (byte == 4 && !length) break;
-        if (byte == 1) cursor = 0;
+        if (byte == '\t') {
+            if (!complete_line(line, capacity, &length, &cursor)) putchar('\a');
+        } else if (byte == 1) cursor = 0;
         else if (byte == 5) cursor = length;
         else if (byte == 21) {
             memmove(line, line + cursor, length - cursor + 1);

@@ -31,6 +31,7 @@ if [ "${1:-}" = assemble ]; then
     sh "$stage/native_xfce_bridge.sh" "$stage/heurism-desktop" 9>&-
     sh "$stage/native_shell.sh" "$stage/heurism-sh" 9>&-
     sh "$stage/native_shell_interactive.sh" "$stage/heurism-sh" 9>&-
+    sh "$stage/native_shell_jobs.sh" "$stage/heurism-sh" 9>&-
     sh "$stage/native_control_dell.sh" 9>&-
     sh "$stage/native_desktop_dell.sh" 9>&-
     sh "$stage/native_apps_dell.sh" 9>&-

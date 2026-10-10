@@ -21,4 +21,22 @@ test "$(cat "$directory/file")" = y
 test "$(cat "$directory/after-overflow")" = recovered
 grep -q 'line exceeds 8192 bytes' "$directory/overflow.log"
 
-echo 'native interactive shell history and editing checks passed'
+printf 'file completion passed\n' >"$directory/notes draft.txt"
+mkdir "$directory/projects"
+{
+    printf 'cd %s\r' "$directory"
+    printf 'cat notes\t> %s\r' "$directory/copied"
+    printf 'cd pro\t\rpwd > %s\r\004' "$directory/inside"
+} | timeout 15 script -q -e -c "$shell" "$directory/path-completion.log" >/dev/null
+cmp "$directory/notes draft.txt" "$directory/copied"
+test "$(cat "$directory/inside")" = "$directory/projects"
+
+printf '#!/bin/sh\nprintf command-completion-passed > "$1"\n' >"$directory/zzqtool"
+chmod 755 "$directory/zzqtool"
+{
+    printf 'export PATH=%s:$PATH\r' "$directory"
+    printf 'zzq\t%s\r\004' "$directory/command-result"
+} | timeout 15 script -q -e -c "$shell" "$directory/command-completion.log" >/dev/null
+test "$(cat "$directory/command-result")" = command-completion-passed
+
+echo 'native interactive shell history, editing and completion checks passed'
