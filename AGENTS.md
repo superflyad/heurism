@@ -1,5 +1,21 @@
 # Current product direction
 
+On 2026-10-10 the VM C launcher gained live open-window search and switching.
+The tracked isolated Xvfb test opened C Terminal and Files, searched for the
+running Terminal from Files, and verified that Enter made Terminal active.
+The 1280x800 preview is `build/prime-vm/heurism-window-switch.png`. The
+guarded installer activated sealed release
+`/opt/heurism/native/releases/heurism-os-20261010T150745Z-16471`.
+Checked C reboot returned fresh boot `b7736202-94de-413f-9f08-de130ece7fce`
+with verified C desktop, theme and root SSH/watch/control healthy; the same
+launcher test passed again against the installed release. Build packages were
+removed. The prechange checkpoint is `Heurism-before-live-window-search-20261010`
+(UUID `24f16f20-a3d2-4a40-9c93-91e969b6eb06`); the ready checkpoint is
+`Heurism-live-window-search-ready-20261010` (UUID
+`ba785c18-865d-43c1-92e3-050192feaa8f`). The Dell remains on Xfce and
+was not changed. See `docs/heurism-launcher.md`. The full distinct desktop
+goal remains open.
+
 On 2026-10-10 the VM C workspace gained a process-scoped Super+Space launcher
 shortcut. It opens the existing searchable C launcher from a focused Terminal;
 Xfce recovery keyboard settings remain unchanged. The tracked isolated Xvfb

@@ -63,3 +63,30 @@ SSH, watch and control. No shortcut grab warning appeared in the live workspace
 log. Build packages were removed. The ready checkpoint is
 `Heurism-keyboard-launcher-ready-20261010` (UUID
 `bb5c3d12-32ab-47aa-9a13-c30241b6f3d1`). The Dell was not changed.
+
+## Live window search, 2026-10-10
+
+The launcher now includes currently open windows in its filtered results.
+Application launch actions appear first, then open windows, then system actions.
+An open window result is labeled as such and activates that window through
+Xfwm's active-window route. Pointer selection and keyboard selection share the
+same result index. Window titles come from the current X11 task list and are
+limited to the existing 20-character dock title representation; this is not a
+file search or a general app index.
+
+The 1280×800 capture at `build/prime-vm/heurism-window-switch.png` shows a
+running C Terminal result over Files. `tests/native_launcher_vm.sh` opened
+both windows, focused Files, opened the launcher with Super+Space, searched for
+the Terminal window and verified that Enter made Terminal the active window.
+The same test passed both for the sealed candidate and again after reboot for
+the installed release. The guarded installer's existing shell, app, control
+and release tests passed before activation.
+
+The prechange checkpoint is `Heurism-before-live-window-search-20261010`
+(UUID `24f16f20-a3d2-4a40-9c93-91e969b6eb06`). The active VM release is
+`/opt/heurism/native/releases/heurism-os-20261010T150745Z-16471`. Checked C
+reboot returned fresh boot `b7736202-94de-413f-9f08-de130ece7fce` with
+the C desktop, theme, release verifier, SSH, watch and control healthy.
+Temporary build packages were removed. The ready checkpoint is
+`Heurism-live-window-search-ready-20261010` (UUID
+`ba785c18-865d-43c1-92e3-050192feaa8f`). The Dell was not changed.

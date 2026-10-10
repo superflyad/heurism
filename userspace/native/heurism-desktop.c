@@ -76,6 +76,7 @@ struct desktop {
 };
 
 struct launcher_item { const char *name, *detail; enum action action; };
+struct launcher_result { const char *name, *detail; enum action action; int index; };
 static const struct launcher_item launcher_items[] = {
     {"Files", "Browse and organize", LAUNCH_FILES},
     {"Editor", "Write and revise", LAUNCH_EDITOR},
@@ -474,23 +475,38 @@ static int bios_value_count(struct desktop *d) {
     return count;
 }
 
-static bool launcher_match(struct desktop *d, const struct launcher_item *item) {
-    return !d->launcher_query[0] || strcasestr(item->name, d->launcher_query) ||
-           strcasestr(item->detail, d->launcher_query);
+static bool launcher_match(struct desktop *d, const char *name, const char *detail) {
+    return !d->launcher_query[0] || strcasestr(name, d->launcher_query) ||
+           strcasestr(detail, d->launcher_query);
 }
 
-static int launcher_count(struct desktop *d) {
+static int launcher_results(struct desktop *d, struct launcher_result *results) {
     int count = 0;
-    for (size_t i = 0; i < sizeof launcher_items / sizeof launcher_items[0]; i++)
-        if (launcher_match(d, &launcher_items[i])) count++;
+    for (size_t i = 0; i < 4; i++)
+        if (launcher_match(d, launcher_items[i].name, launcher_items[i].detail))
+            results[count++] = (struct launcher_result){launcher_items[i].name,
+                launcher_items[i].detail, launcher_items[i].action, 0};
+    for (int i = 0; i < d->task_count; i++)
+        if (launcher_match(d, d->tasks[i].title, "Open window"))
+            results[count++] = (struct launcher_result){d->tasks[i].title,
+                "Open window", SWITCH_TASK, i};
+    for (size_t i = 4; i < sizeof launcher_items / sizeof launcher_items[0]; i++)
+        if (launcher_match(d, launcher_items[i].name, launcher_items[i].detail))
+            results[count++] = (struct launcher_result){launcher_items[i].name,
+                launcher_items[i].detail, launcher_items[i].action, 0};
     return count;
 }
 
-static enum action launcher_choice(struct desktop *d, int selected) {
-    for (size_t i = 0; i < sizeof launcher_items / sizeof launcher_items[0]; i++)
-        if (launcher_match(d, &launcher_items[i]) && selected-- == 0)
-            return launcher_items[i].action;
-    return NONE;
+static int launcher_count(struct desktop *d) {
+    struct launcher_result results[MAX_TASKS + sizeof launcher_items / sizeof launcher_items[0]];
+    return launcher_results(d, results);
+}
+
+static struct launcher_result launcher_choice(struct desktop *d, int selected) {
+    struct launcher_result results[MAX_TASKS + sizeof launcher_items / sizeof launcher_items[0]];
+    int count = launcher_results(d, results);
+    return selected >= 0 && selected < count ? results[selected] :
+           (struct launcher_result){.action = NONE};
 }
 
 static void render_launcher(struct desktop *d) {
@@ -504,11 +520,12 @@ static void render_launcher(struct desktop *d) {
     fill(d, d->background, 32, 111, 3, 53, 215, 168, 101);
     char query[96];
     snprintf(query, sizeof query, "%s%s", d->launcher_query[0] ? d->launcher_query :
-             "Search apps and system", d->launcher_query[0] ? " |" : "");
+             "Search apps and open windows", d->launcher_query[0] ? " |" : "");
     label(d, d->background, 49, 146, d->font_body, query,
           d->launcher_query[0] ? 239 : 157, d->launcher_query[0] ? 245 : 176,
           d->launcher_query[0] ? 255 : 198);
-    int count = launcher_count(d);
+    struct launcher_result results[MAX_TASKS + sizeof launcher_items / sizeof launcher_items[0]];
+    int count = launcher_results(d, results);
     int capacity = (d->height - 226) / 54;
     if (capacity < 1) capacity = 1;
     if (d->launcher_selected >= count) d->launcher_selected = count ? count - 1 : 0;
@@ -516,11 +533,9 @@ static void render_launcher(struct desktop *d) {
     if (d->launcher_selected >= d->launcher_offset + capacity)
         d->launcher_offset = d->launcher_selected - capacity + 1;
     if (!count) label(d, d->background, 48, 218, d->font_body,
-                      "No matching actions", 157, 176, 198);
-    int index = 0;
-    for (size_t i = 0; i < sizeof launcher_items / sizeof launcher_items[0]; i++) {
-        const struct launcher_item *item = &launcher_items[i];
-        if (!launcher_match(d, item)) continue;
+                      "No matching apps or windows", 157, 176, 198);
+    for (int index = 0; index < count; index++) {
+        const struct launcher_result *item = &results[index];
         if (index >= d->launcher_offset && index < d->launcher_offset + capacity) {
             int y = 181 + (index - d->launcher_offset) * 54;
             bool selected = index == d->launcher_selected;
@@ -530,9 +545,8 @@ static void render_launcher(struct desktop *d) {
             label(d, d->background, 48, y + 22, d->font_body, item->name, 239, 245, 255);
             label(d, d->background, d->width / 2, y + 21, d->font_small,
                   item->detail, 157, 176, 198);
-            hit(d, d->background, 32, y, d->width - 64, 48, item->action, 0);
+            hit(d, d->background, 32, y, d->width - 64, 48, item->action, item->index);
         }
-        index++;
     }
     char footer[128];
     snprintf(footer, sizeof footer, "%d results  ·  ↑↓ choose  ·  Enter open  ·  Esc close", count);
@@ -849,6 +863,7 @@ static void run_action(struct desktop *d, enum action action, int index) {
         case SHOW_OVERVIEW: launch_self(d, "--overview"); break;
         case SHOW_NETWORK: launch_self(d, "--network"); break;
         case SHOW_POWER: launch_self(d, "--power"); break;
+        case SWITCH_TASK: activate_task(d, index); break;
         case SHOW_WORKSPACE: XCloseDisplay(d->display); exit(0);
         default: return;
         }
@@ -1244,7 +1259,7 @@ static int show_home(void) {
 int main(int argc, char **argv) {
     setlocale(LC_ALL, "");
     if (argc == 2 && !strcmp(argv[1], "--version")) {
-        puts("Heurism desktop 0.4 (C/X11/Xft)"); return 0;
+        puts("Heurism desktop 0.5 (C/X11/Xft)"); return 0;
     }
     if (argc == 2 && !strcmp(argv[1], "--home")) return show_home();
     struct desktop d = {.page = WORKSPACE, .control_socket = DEFAULT_SOCKET,
@@ -1307,8 +1322,10 @@ int main(int argc, char **argv) {
                         d.launcher_selected++;
                     else if (key == XK_Up && d.launcher_selected > 0)
                         d.launcher_selected--;
-                    else if ((key == XK_Return || key == XK_KP_Enter) && count)
-                        run_action(&d, launcher_choice(&d, d.launcher_selected), 0);
+                    else if ((key == XK_Return || key == XK_KP_Enter) && count) {
+                        struct launcher_result choice = launcher_choice(&d, d.launcher_selected);
+                        run_action(&d, choice.action, choice.index);
+                    }
                     else if (key == XK_BackSpace) {
                         size_t length = strlen(d.launcher_query);
                         if (length) d.launcher_query[length - 1] = 0;

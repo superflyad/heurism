@@ -73,6 +73,23 @@ xdotool windowactivate --sync "$launcher"
 xdotool key Escape
 sleep 1
 if xdotool search --name '^Heurism Launcher$' >/dev/null 2>&1; then exit 1; fi
+xdotool mousemove 286 748 click 1
+sleep 2
+files=$(xdotool search --name '^Heurism Files$' | tail -n 1)
+test -n "$files"
+xdotool windowactivate --sync "$files"
+xdotool key --clearmodifiers super+space
+sleep 1
+launcher=$(xdotool search --name '^Heurism Launcher$' | tail -n 1)
+test -n "$launcher"
+xdotool windowactivate --sync "$launcher"
+xdotool type --clearmodifiers 'heurism c'
+sleep 1
+xwd -root -silent -out "$work/window-switch.xwd"
+xdotool key Return
+sleep 2
+test "$(xdotool getactivewindow)" = "$terminal"
+if xdotool search --name '^Heurism Launcher$' >/dev/null 2>&1; then exit 1; fi
 for action in settings power; do
     xdotool mousemove 180 748 click 1
     sleep 1
@@ -91,4 +108,4 @@ xdotool windowactivate --sync "$launcher"
 xdotool key Escape
 sleep 1
 if xdotool search --name '^Heurism Launcher$' >/dev/null 2>&1; then exit 1; fi
-echo "C launcher dock, Super+Space, search and app actions passed; captures: $work/workspace.xwd $work/launcher.xwd"
+echo "C launcher dock, Super+Space, window switching and app actions passed; captures: $work/workspace.xwd $work/launcher.xwd $work/window-switch.xwd"
