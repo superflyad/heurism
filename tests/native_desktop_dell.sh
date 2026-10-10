@@ -43,7 +43,7 @@ until DISPLAY=:1 xdotool search --name 'Heurism dock' >/dev/null 2>&1; do
 done
 desktop=$(DISPLAY=:1 xdotool search --name '^Heurism desktop$' | tail -n 1)
 test -n "$desktop"
-DISPLAY=:1 xdotool mousemove 430 609 click 1
+DISPLAY=:1 xdotool key --window "$desktop" F2
 sleep 1
 DISPLAY=:1 xdotool mousemove 170 365 click 1
 sleep 1
@@ -53,9 +53,7 @@ DISPLAY=:1 xdotool key --window "$desktop" F3
 sleep 1
 kill -0 "$ui"
 DISPLAY=:1 xwd -root -silent -out /tmp/heurism-native-dell-device.xwd
-DISPLAY=:1 xdotool mousemove 150 217 click 1
-sleep 1
-DISPLAY=:1 xdotool mousemove 600 609 click 1
+DISPLAY=:1 xdotool key --window "$desktop" F5
 sleep 1
 DISPLAY=:1 xdotool mousemove 145 404 click 1
 sleep 10
@@ -65,11 +63,7 @@ sleep 1
 DISPLAY=:1 xdotool type --clearmodifiers 'test-only-pass'
 sleep 1
 DISPLAY=:1 xwd -root -silent -out /tmp/heurism-native-dell-network.xwd
-DISPLAY=:1 xdotool mousemove 150 217 click 1
-sleep 1
-DISPLAY=:1 xdotool mousemove 1100 609 click 1
-sleep 1
-DISPLAY=:1 xdotool mousemove 150 555 click 1
+DISPLAY=:1 xdotool key --window "$desktop" F6
 sleep 1
 kill -0 "$ui"
 DISPLAY=:1 xwd -root -silent -out /tmp/heurism-native-dell-sound.xwd

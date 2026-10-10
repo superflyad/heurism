@@ -61,10 +61,11 @@ desktop=$!
 sleep 3
 export DISPLAY=:93 XAUTHORITY="$work/Xauthority"
 xdotool search --name '^Heurism dock$' >/dev/null
+xdotool search --name '^Heurism panel$' >/dev/null
 xdotool getdisplaygeometry | grep -Fxq '1920 1080'
 mkdir -p /var/lib/companion/native-stage/evidence
 xwd -root -silent -out /var/lib/companion/native-stage/evidence/heurism-dell-workspace.xwd
-xdotool mousemove 1335 1028 click 1
+xdotool mousemove 1270 1028 click 1
 sleep 2
 quick=$(xdotool search --name '^Heurism Quick Controls$' | tail -n 1)
 test -n "$quick"
@@ -74,7 +75,7 @@ xdotool windowactivate --sync "$quick"
 xdotool key Escape
 sleep 1
 if xdotool search --name '^Heurism Quick Controls$' >/dev/null 2>&1; then exit 1; fi
-xdotool mousemove 520 1028 click 1
+xdotool mousemove 640 1028 click 1
 sleep 1
 launcher=$(xdotool search --name '^Heurism Launcher$' | tail -n 1)
 test -n "$launcher"

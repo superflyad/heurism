@@ -7,6 +7,7 @@
 #include <X11/Xft/Xft.h>
 #include <errno.h>
 #include <fcntl.h>
+#include <gio/gio.h>
 #include <json-c/json.h>
 #include <locale.h>
 #include <poll.h>
@@ -29,7 +30,7 @@
 enum page { WORKSPACE, MENU, OVERVIEW, SETTINGS, DEVICE, NETWORK, SOUND };
 enum action { NONE, SHOW_WORKSPACE, SHOW_MENU, SHOW_OVERVIEW, SHOW_SETTINGS,
               SHOW_DEVICE, SHOW_NETWORK, SHOW_SOUND, SHOW_POWER, SHOW_QUICK,
-              LOCK_DESKTOP, LAUNCH_FILES, LAUNCH_EDITOR,
+              LOCK_DESKTOP, LAUNCH_FILES, LAUNCH_EDITOR, LAUNCH_INSTALLED,
               LAUNCH_BROWSER, LAUNCH_TERMINAL, LAUNCH_KEYBOARD, TOGGLE_THEME,
               SWITCH_TASK, MINIMIZE_TASKS, ADMIN_CONSOLE, RESTART_VM, SHUT_DOWN_VM,
               BRIGHTER, DIMMER, TAP_TOGGLE, SCROLL_TOGGLE, SPEED_UP, SPEED_DOWN,
@@ -41,10 +42,10 @@ struct task { Window window; char title[64]; };
 struct desktop {
     Display *display;
     int screen, width, height, dock_x, dock_y, dock_width;
-    Window background, dock;
+    Window background, dock, panel;
     Visual *visual;
     GC gc;
-    XftDraw *background_draw, *dock_draw;
+    XftDraw *background_draw, *dock_draw, *panel_draw;
     XftFont *font_small, *font_body, *font_large;
     Atom type_atom, desktop_atom, dock_atom, state_atom, skip_taskbar_atom;
     Atom strut_atom, client_list_atom, active_atom;
@@ -72,6 +73,7 @@ struct desktop {
     bool quick_mode;
     char launcher_query[64];
     int launcher_selected, launcher_offset;
+    GList *installed_apps;
     enum action pending_power;
     time_t power_deadline;
     const char *control_socket;
@@ -90,6 +92,26 @@ static const struct launcher_item launcher_items[] = {
     {"Keyboard", "On-screen input", LAUNCH_KEYBOARD},
     {"Power", "Restart or shut down", SHOW_POWER}
 };
+
+static gint compare_app_names(gconstpointer left, gconstpointer right) {
+    return g_utf8_collate(g_app_info_get_display_name(G_APP_INFO(left)),
+                          g_app_info_get_display_name(G_APP_INFO(right)));
+}
+
+static void load_installed_apps(struct desktop *d) {
+    GList *all = g_app_info_get_all();
+    for (GList *item = all; item; item = item->next) {
+        GAppInfo *info = G_APP_INFO(item->data);
+        const char *id = g_app_info_get_id(info);
+        const char *name = g_app_info_get_display_name(info);
+        if (!g_app_info_should_show(info) || !name || !*name ||
+            (id && (g_str_has_prefix(id, "heurism-") ||
+                    !strcmp(id, "xfce4-session-logout.desktop")))) continue;
+        d->installed_apps = g_list_prepend(d->installed_apps, g_object_ref(info));
+    }
+    g_list_free_full(all, g_object_unref);
+    d->installed_apps = g_list_sort(d->installed_apps, compare_app_names);
+}
 
 static int (*previous_x_error)(Display *, XErrorEvent *);
 static bool shortcut_grab_failed;
@@ -123,6 +145,20 @@ static void fill(struct desktop *d, Window window, int x, int y, int width, int 
     XFillRectangle(d->display, window, d->gc, x, y, (unsigned)width, (unsigned)height);
 }
 
+static void rounded(struct desktop *d, Window window, int x, int y, int width, int height,
+                    int radius, unsigned red, unsigned green, unsigned blue) {
+    if (width <= radius * 2 || height <= radius * 2) return;
+    fill(d, window, x + radius, y, width - radius * 2, height, red, green, blue);
+    fill(d, window, x, y + radius, width, height - radius * 2, red, green, blue);
+    XSetForeground(d->display, d->gc, rgb(d, red, green, blue));
+    int corners[4][2] = {{x, y}, {x + width - radius * 2, y},
+                         {x, y + height - radius * 2},
+                         {x + width - radius * 2, y + height - radius * 2}};
+    for (int i = 0; i < 4; i++)
+        XFillArc(d->display, window, d->gc, corners[i][0], corners[i][1],
+                 (unsigned)(radius * 2), (unsigned)(radius * 2), 0, 360 * 64);
+}
+
 static void label(struct desktop *d, Window window, int x, int y, XftFont *font,
                   const char *text, unsigned red, unsigned green, unsigned blue) {
     bool light_page = d->light && !d->launcher_mode && !d->quick_mode &&
@@ -133,11 +169,19 @@ static void label(struct desktop *d, Window window, int x, int y, XftFont *font,
     } else if (light_page && red == 157 && green == 176 && blue == 198) {
         red = 70; green = 91; blue = 112;
     }
-    XftDraw *draw = window == d->dock ? d->dock_draw : d->background_draw;
+    XftDraw *draw = window == d->dock ? d->dock_draw :
+                    window == d->panel ? d->panel_draw : d->background_draw;
     XftColor color = {.pixel = rgb(d, red, green, blue),
                       .color = {(unsigned short)(red * 257), (unsigned short)(green * 257),
                                 (unsigned short)(blue * 257), 65535}};
     XftDrawStringUtf8(draw, &color, font, x, y, (const FcChar8 *)text, (int)strlen(text));
+}
+
+static int label_width(struct desktop *d, XftFont *font, const char *value) {
+    XGlyphInfo ink;
+    XftTextExtentsUtf8(d->display, font, (const FcChar8 *)value,
+                       (int)strlen(value), &ink);
+    return ink.xOff;
 }
 
 static void hit(struct desktop *d, Window window, int x, int y, int width, int height,
@@ -151,9 +195,9 @@ static void button(struct desktop *d, Window window, int x, int y, int width, in
     bool light_button = d->light && !d->launcher_mode && !d->quick_mode &&
                         window == d->background &&
                         (d->settings_mode || d->page != WORKSPACE);
-    if (accent) fill(d, window, x, y, width, height, 80, 225, 190);
-    else fill(d, window, x, y, width, height, light_button ? 218 : 29,
-              light_button ? 230 : 48, light_button ? 239 : 65);
+    if (accent) rounded(d, window, x, y, width, height, 7, 80, 225, 190);
+    else rounded(d, window, x, y, width, height, 7, light_button ? 218 : 29,
+                 light_button ? 230 : 48, light_button ? 239 : 65);
     XftFont *font = window == d->dock ? d->font_small : d->font_body;
     label(d, window, x + (window == d->dock ? 10 : 14),
           y + height / 2 + font->ascent / 2 - 2,
@@ -332,7 +376,8 @@ static void refresh_tasks(struct desktop *d) {
     if (actual == XA_WINDOW && format == 32) {
         for (unsigned long i = 0; i < count && d->task_count < MAX_TASKS; i++) {
             Window window = ((Window *)property)[i];
-            if (window == d->background || window == d->dock || is_shell_window(d, window)) continue;
+            if (window == d->background || window == d->dock ||
+                window == d->panel || is_shell_window(d, window)) continue;
             char *title = NULL;
             if (!XFetchName(d->display, window, &title) || !title || !*title) {
                 if (title) XFree(title);
@@ -347,109 +392,131 @@ static void refresh_tasks(struct desktop *d) {
     if (property) XFree(property);
 }
 
+static void dock_symbol(struct desktop *d, int x, enum action action) {
+    int left = x + 14, top = 17;
+    XSetForeground(d->display, d->gc, rgb(d, 238, 246, 249));
+    XSetLineAttributes(d->display, d->gc, 2, LineSolid, CapRound, JoinRound);
+    if (action == LAUNCH_FILES) {
+        XDrawRectangle(d->display, d->dock, d->gc, left, top + 9, 23, 16);
+        XDrawLine(d->display, d->dock, d->gc, left, top + 9, left + 9, top + 9);
+        XDrawLine(d->display, d->dock, d->gc, left + 2, top + 5, left + 11, top + 5);
+    } else if (action == LAUNCH_EDITOR) {
+        XDrawRectangle(d->display, d->dock, d->gc, left + 3, top + 2, 19, 25);
+        for (int i = 0; i < 3; i++)
+            XDrawLine(d->display, d->dock, d->gc, left + 7, top + 10 + i * 5,
+                      left + 18, top + 10 + i * 5);
+    } else if (action == LAUNCH_BROWSER) {
+        XDrawArc(d->display, d->dock, d->gc, left, top + 2, 25, 25, 0, 360 * 64);
+        XDrawArc(d->display, d->dock, d->gc, left + 8, top + 2, 9, 25, 0, 360 * 64);
+        XDrawLine(d->display, d->dock, d->gc, left + 1, top + 14,
+                  left + 24, top + 14);
+    } else if (action == LAUNCH_TERMINAL) {
+        XDrawRectangle(d->display, d->dock, d->gc, left, top + 3, 25, 23);
+        XDrawLine(d->display, d->dock, d->gc, left + 5, top + 10,
+                  left + 10, top + 14);
+        XDrawLine(d->display, d->dock, d->gc, left + 10, top + 14,
+                  left + 5, top + 18);
+        XDrawLine(d->display, d->dock, d->gc, left + 13, top + 19,
+                  left + 20, top + 19);
+    }
+    XSetLineAttributes(d->display, d->gc, 0, LineSolid, CapButt, JoinMiter);
+}
+
+static void dock_app(struct desktop *d, int x, const char *name,
+                     enum action action, unsigned red, unsigned green, unsigned blue) {
+    fill(d, d->dock, x + 5, 8, 42, 42, red, green, blue);
+    if (action == SHOW_MENU)
+        label(d, d->dock, x + 18, 37, d->font_body, "H", 12, 30, 43);
+    else dock_symbol(d, x, action);
+    label(d, d->dock, x + 3, 68, d->font_small, name, 200, 214, 224);
+    hit(d, d->dock, x, 5, 54, 70, action, 0);
+}
+
 static void render_dock(struct desktop *d) {
-    fill(d, d->dock, 0, 0, d->dock_width, 68, 10, 28, 40);
-    fill(d, d->dock, 0, 0, d->dock_width, 2, 215, 168, 101);
-    int x = 14;
-    button(d, d->dock, x, 10, 114, 46, "Heurism", SHOW_MENU, 0, true); x += 124;
-    const struct { const char *title; enum action action; int width; } apps[] = {
-        {"Files", LAUNCH_FILES, 64}, {"Editor", LAUNCH_EDITOR, 70},
-        {"Browser", LAUNCH_BROWSER, 82}, {"Terminal", LAUNCH_TERMINAL, 86}
-    };
-    for (size_t i = 0; i < sizeof apps / sizeof apps[0]; i++) {
-        button(d, d->dock, x, 10, apps[i].width, 46, apps[i].title, apps[i].action, 0, false);
-        x += apps[i].width + 5;
-    }
-    int limit = d->dock_width - 225;
-    for (int i = 0; i < d->task_count && x + 70 < limit; i++) {
-        int width = (int)strlen(d->tasks[i].title) * 8 + 22;
-        if (width > 160) width = 160;
+    fill(d, d->dock, 0, 0, d->dock_width, 78, 19, 28, 43);
+    fill(d, d->dock, 1, 1, d->dock_width - 2, 1, 68, 88, 108);
+    dock_app(d, 16, "Apps", SHOW_MENU, 75, 219, 194);
+    fill(d, d->dock, 79, 14, 1, 48, 73, 91, 109);
+    dock_app(d, 91, "Files", LAUNCH_FILES, 49, 91, 143);
+    dock_app(d, 151, "Editor", LAUNCH_EDITOR, 129, 79, 77);
+    dock_app(d, 211, "Web", LAUNCH_BROWSER, 63, 107, 93);
+    dock_app(d, 271, "Terminal", LAUNCH_TERMINAL, 85, 75, 126);
+    fill(d, d->dock, 355, 14, 1, 48, 73, 91, 109);
+    int x = 368, limit = d->dock_width - 111;
+    for (int i = 0; i < d->task_count && x + 56 < limit; i++) {
+        int width = (int)strlen(d->tasks[i].title) * 7 + 20;
+        if (width > 125) width = 125;
         if (x + width > limit) width = limit - x;
-        button(d, d->dock, x, 10, width, 46, d->tasks[i].title, SWITCH_TASK, i, false);
-        x += width + 5;
+        fill(d, d->dock, x, 15, width, 48, 35, 48, 67);
+        label(d, d->dock, x + 9, 45, d->font_small, d->tasks[i].title,
+              218, 229, 238);
+        hit(d, d->dock, x, 15, width, 48, SWITCH_TASK, i);
+        x += width + 6;
     }
+    fill(d, d->dock, d->dock_width - 100, 13, 1, 51, 73, 91, 109);
+    fill(d, d->dock, d->dock_width - 87, 16, 72, 47, 34, 48, 65);
+    label(d, d->dock, d->dock_width - 70, 46, d->font_body, "•••", 235, 243, 248);
+    hit(d, d->dock, d->dock_width - 87, 16, 72, 47, SHOW_QUICK, 0);
+}
+
+static void render_panel(struct desktop *d) {
+    fill(d, d->panel, 0, 0, d->width, 48, 18, 27, 42);
+    fill(d, d->panel, 0, 47, d->width, 1, 45, 63, 82);
+    fill(d, d->panel, 20, 11, 27, 27, 75, 219, 194);
+    label(d, d->panel, 27, 32, d->font_small, "H", 12, 32, 45);
+    label(d, d->panel, 59, 32, d->font_body, "Heurism", 237, 244, 249);
+    fill(d, d->panel, 159, 15, 1, 20, 75, 91, 107);
+    label(d, d->panel, 176, 32, d->font_small, "Workspace 1", 165, 183, 201);
+    hit(d, d->panel, 12, 0, 285, 48, SHOW_MENU, 0);
     time_t now = time(NULL);
     struct tm local;
     localtime_r(&now, &local);
-    char clock_text[16];
-    strftime(clock_text, sizeof clock_text, "%H:%M", &local);
-    button(d, d->dock, d->dock_width - 216, 10, 140, 46,
-           d->address[0] ? "Connected  >" : "Offline  >", SHOW_QUICK, 0, false);
-    label(d, d->dock, d->dock_width - 60, 39, d->font_small, clock_text, 239, 245, 255);
-}
-
-static void workspace_card(struct desktop *d, int x, int y, int width,
-                           const char *number, const char *title, const char *detail,
-                           enum action action, bool warm) {
-    fill(d, d->background, x, y, width, 154, 19, 43, 56);
-    fill(d, d->background, x, y, 4, 154, warm ? 215 : 77,
-         warm ? 168 : 211, warm ? 101 : 194);
-    label(d, d->background, x + 22, y + 34, d->font_small, number,
-          warm ? 215 : 77, warm ? 168 : 211, warm ? 101 : 194);
-    label(d, d->background, x + 22, y + 84, d->font_body, title, 239, 245, 255);
-    label(d, d->background, x + 22, y + 120, d->font_small, detail, 157, 176, 198);
-    hit(d, d->background, x, y, width, 154, action, 0);
+    char clock_text[64];
+    strftime(clock_text, sizeof clock_text, "%a %d %b   %H:%M", &local);
+    int clock_x = d->width - label_width(d, d->font_small, clock_text) - 22;
+    int network_x = clock_x - 96;
+    fill(d, d->panel, network_x, 21, 7, 7,
+         d->address[0] ? 75 : 211, d->address[0] ? 219 : 149,
+         d->address[0] ? 194 : 127);
+    label(d, d->panel, network_x + 17, 32, d->font_small,
+          d->address[0] ? "Online" : "Offline", 192, 208, 221);
+    label(d, d->panel, clock_x, 32, d->font_small,
+          clock_text, 237, 244, 249);
+    hit(d, d->panel, d->width - 240, 0, 240, 48, SHOW_QUICK, 0);
 }
 
 static void render_workspace(struct desktop *d) {
-    int content = d->width - 64;
-    if (content > 1168) content = 1168;
-    int x = (d->width - content) / 2;
-    int left = content * 52 / 100;
-    int card = (left - 18) / 2;
-    int right = x + left + 24;
-    int right_width = content - left - 24;
-    fill(d, d->background, 0, 0, d->width, d->height, 8, 20, 31);
-    fill(d, d->background, 0, 0, d->width, 66, 12, 32, 43);
-    fill(d, d->background, 0, 65, d->width, 1, 45, 88, 94);
-    fill(d, d->background, x, 17, 34, 34, 72, 202, 182);
-    label(d, d->background, x + 10, 42, d->font_body, "H", 8, 32, 39);
-    label(d, d->background, x + 50, 42, d->font_body, "HEURISM", 239, 245, 255);
-    label(d, d->background, right, 42, d->font_small,
-          d->address[0] ? d->address : "Offline", 157, 176, 198);
-
-    label(d, d->background, x, 113, d->font_small,
-          "WORKSPACE  /  YOUR MACHINE", 77, 211, 194);
-    label(d, d->background, x, 169, d->font_large, "Workspace", 239, 245, 255);
-    label(d, d->background, x, 199, d->font_small,
-          "Tools, open windows and system state in one place.", 157, 176, 198);
-    workspace_card(d, x, 230, card, "01  ORGANIZE", "Files",
-                   "Browse and manage", LAUNCH_FILES, false);
-    workspace_card(d, x + card + 18, 230, card, "02  CREATE", "Editor",
-                   "Write and revise", LAUNCH_EDITOR, true);
-    workspace_card(d, x, 402, card, "03  EXPLORE", "Browser",
-                   "Open the web", LAUNCH_BROWSER, true);
-    workspace_card(d, x + card + 18, 402, card, "04  BUILD", "Terminal",
-                   "Command the system", LAUNCH_TERMINAL, false);
-
-    fill(d, d->background, right, 230, right_width, 326, 15, 40, 52);
-    fill(d, d->background, right, 230, right_width, 3, 215, 168, 101);
-    label(d, d->background, right + 25, 268, d->font_small,
-          "SYSTEM  /  LIVE", 215, 168, 101);
-    label(d, d->background, right + 25, 310, d->font_body,
-          d->hostname[0] ? d->hostname : "This machine", 239, 245, 255);
-    char line[192];
-    snprintf(line, sizeof line, "Network     %s", d->address[0] ? d->address : "Offline");
-    label(d, d->background, right + 25, 354, d->font_small, line, 157, 176, 198);
-    snprintf(line, sizeof line, "Memory      %lld MiB available", d->free_memory / 1048576);
-    label(d, d->background, right + 25, 390, d->font_small, line, 157, 176, 198);
-    snprintf(line, sizeof line, "Access       SSH %s  ·  Watch %s",
-             d->ssh ? "ready" : "down", d->watch ? "ready" : "down");
-    label(d, d->background, right + 25, 426, d->font_small, line, 157, 176, 198);
-    fill(d, d->background, right + 25, 448, right_width - 50, 1, 43, 75, 82);
-    label(d, d->background, right + 25, 479, d->font_small,
-          d->task_count ? "OPEN WINDOWS" : "NO WINDOWS OPEN", 77, 211, 194);
-    for (int i = 0; i < d->task_count && i < 2; i++)
-        button(d, d->background, right + 25 + i * ((right_width - 58) / 2), 494,
-               (right_width - 66) / 2, 43, d->tasks[i].title, SWITCH_TASK, i, false);
-
-    button(d, d->background, x, 585, 168, 48, "Settings", SHOW_SETTINGS, 0, false);
-    button(d, d->background, x + 180, 585, 168, 48, "Network", SHOW_NETWORK, 0, false);
-    button(d, d->background, x + 360, 585, 168, 48, "Keyboard", LAUNCH_KEYBOARD, 0, false);
-    button(d, d->background, right, 585, 168, 48, "System", SHOW_OVERVIEW, 0, false);
-    label(d, d->background, x, d->height - 126, d->font_small,
-          "Super+Space Launcher    F1 System    F2 Settings    Alt+Tab Windows",
-          157, 176, 198);
+    for (int y = 0; y < d->height; y += 8) {
+        unsigned step = (unsigned)(y * 22 / d->height);
+        fill(d, d->background, 0, y, d->width, 8,
+             12 + step / 3, 22 + step / 2, 38 + step);
+    }
+    /* A quiet geometric identity leaves room for real application windows. */
+    int cx = d->width * 72 / 100, cy = d->height * 43 / 100;
+    for (int i = 0; i < 9; i++) {
+        int radius = 380 - i * 30;
+        fill(d, d->background, cx - radius, cy - radius / 2,
+             radius * 2, 1, 28 + i * 2, 47 + i * 2, 67 + i * 3);
+    }
+    XPoint facets[4] = {
+        {(short)(cx - 210), (short)(cy - 100)},
+        {(short)(cx + 110), (short)(cy - 220)},
+        {(short)(cx + 260), (short)(cy + 110)},
+        {(short)(cx - 60), (short)(cy + 230)}
+    };
+    XSetForeground(d->display, d->gc, rgb(d, 29, 66, 83));
+    XFillPolygon(d->display, d->background, d->gc, facets, 4, Convex, CoordModeOrigin);
+    XPoint inset[4] = {
+        {(short)(cx - 135), (short)(cy - 55)},
+        {(short)(cx + 98), (short)(cy - 145)},
+        {(short)(cx + 185), (short)(cy + 65)},
+        {(short)(cx - 45), (short)(cy + 155)}
+    };
+    XSetForeground(d->display, d->gc, rgb(d, 18, 44, 67));
+    XFillPolygon(d->display, d->background, d->gc, inset, 4, Convex, CoordModeOrigin);
+    fill(d, d->background, cx - 72, cy - 42, 12, 128, 75, 219, 194);
+    fill(d, d->background, cx + 50, cy - 77, 12, 128, 75, 219, 194);
+    fill(d, d->background, cx - 72, cy + 7, 134, 12, 75, 219, 194);
 }
 
 static const char *bios_name(int index) {
@@ -484,52 +551,68 @@ static bool launcher_match(struct desktop *d, const char *name, const char *deta
            strcasestr(detail, d->launcher_query);
 }
 
-static int launcher_results(struct desktop *d, struct launcher_result *results) {
+static void launcher_add(int wanted, struct launcher_result *choice, int *count,
+                         struct launcher_result result) {
+    if (*count == wanted && choice) *choice = result;
+    (*count)++;
+}
+
+static int launcher_results(struct desktop *d, int wanted, struct launcher_result *choice) {
     int count = 0;
     for (size_t i = 0; i < 4; i++)
         if (launcher_match(d, launcher_items[i].name, launcher_items[i].detail))
-            results[count++] = (struct launcher_result){launcher_items[i].name,
-                launcher_items[i].detail, launcher_items[i].action, 0};
+            launcher_add(wanted, choice, &count,
+                (struct launcher_result){launcher_items[i].name,
+                    launcher_items[i].detail, launcher_items[i].action, 0});
     for (int i = 0; i < d->task_count; i++)
         if (launcher_match(d, d->tasks[i].title, "Open window"))
-            results[count++] = (struct launcher_result){d->tasks[i].title,
-                "Open window", SWITCH_TASK, i};
+            launcher_add(wanted, choice, &count,
+                (struct launcher_result){d->tasks[i].title,
+                    "Open window", SWITCH_TASK, i});
     for (size_t i = 4; i < sizeof launcher_items / sizeof launcher_items[0]; i++)
         if (launcher_match(d, launcher_items[i].name, launcher_items[i].detail))
-            results[count++] = (struct launcher_result){launcher_items[i].name,
-                launcher_items[i].detail, launcher_items[i].action, 0};
+            launcher_add(wanted, choice, &count,
+                (struct launcher_result){launcher_items[i].name,
+                    launcher_items[i].detail, launcher_items[i].action, 0});
+    int index = 0;
+    for (GList *item = d->installed_apps; item; item = item->next, index++) {
+        GAppInfo *info = G_APP_INFO(item->data);
+        const char *name = g_app_info_get_display_name(info);
+        const char *detail = g_app_info_get_executable(info);
+        if (!detail || !*detail) detail = "Installed application";
+        if (launcher_match(d, name, detail))
+            launcher_add(wanted, choice, &count,
+                (struct launcher_result){name, detail, LAUNCH_INSTALLED, index});
+    }
     return count;
 }
 
 static int launcher_count(struct desktop *d) {
-    struct launcher_result results[MAX_TASKS + sizeof launcher_items / sizeof launcher_items[0]];
-    return launcher_results(d, results);
+    return launcher_results(d, -1, NULL);
 }
 
 static struct launcher_result launcher_choice(struct desktop *d, int selected) {
-    struct launcher_result results[MAX_TASKS + sizeof launcher_items / sizeof launcher_items[0]];
-    int count = launcher_results(d, results);
-    return selected >= 0 && selected < count ? results[selected] :
-           (struct launcher_result){.action = NONE};
+    struct launcher_result choice = {.action = NONE};
+    if (selected >= 0) launcher_results(d, selected, &choice);
+    return choice;
 }
 
 static void render_launcher(struct desktop *d) {
-    fill(d, d->background, 0, 0, d->width, d->height, 8, 20, 31);
-    fill(d, d->background, 0, 0, 5, d->height, 77, 211, 194);
-    fill(d, d->background, 32, 29, 38, 38, 77, 211, 194);
-    label(d, d->background, 44, 56, d->font_body, "H", 8, 32, 39);
-    label(d, d->background, 86, 52, d->font_small, "HEURISM  /  LAUNCHER", 77, 211, 194);
-    label(d, d->background, 32, 94, d->font_body, "Find your next step", 239, 245, 255);
-    fill(d, d->background, 32, 111, d->width - 64, 53, 19, 43, 56);
-    fill(d, d->background, 32, 111, 3, 53, 215, 168, 101);
+    fill(d, d->background, 0, 0, d->width, d->height, 20, 29, 44);
+    fill(d, d->background, 0, 0, d->width, 1, 73, 94, 113);
+    fill(d, d->background, 30, 28, 30, 30, 75, 219, 194);
+    label(d, d->background, 37, 52, d->font_small, "H", 12, 30, 43);
+    label(d, d->background, 76, 51, d->font_body, "Search Heurism", 237, 244, 249);
+    label(d, d->background, d->width - 93, 51, d->font_small,
+          "Esc close", 164, 182, 200);
+    rounded(d, d->background, 30, 90, d->width - 60, 60, 10, 35, 49, 68);
     char query[96];
     snprintf(query, sizeof query, "%s%s", d->launcher_query[0] ? d->launcher_query :
-             "Search apps and open windows", d->launcher_query[0] ? " |" : "");
-    label(d, d->background, 49, 146, d->font_body, query,
+             "Apps, files, settings and open windows", d->launcher_query[0] ? " |" : "");
+    label(d, d->background, 50, 128, d->font_body, query,
           d->launcher_query[0] ? 239 : 157, d->launcher_query[0] ? 245 : 176,
           d->launcher_query[0] ? 255 : 198);
-    struct launcher_result results[MAX_TASKS + sizeof launcher_items / sizeof launcher_items[0]];
-    int count = launcher_results(d, results);
+    int count = launcher_count(d);
     int capacity = (d->height - 226) / 54;
     if (capacity < 1) capacity = 1;
     if (d->launcher_selected >= count) d->launcher_selected = count ? count - 1 : 0;
@@ -538,19 +621,18 @@ static void render_launcher(struct desktop *d) {
         d->launcher_offset = d->launcher_selected - capacity + 1;
     if (!count) label(d, d->background, 48, 218, d->font_body,
                       "No matching apps or windows", 157, 176, 198);
-    for (int index = 0; index < count; index++) {
-        const struct launcher_result *item = &results[index];
-        if (index >= d->launcher_offset && index < d->launcher_offset + capacity) {
+    for (int index = d->launcher_offset;
+         index < count && index < d->launcher_offset + capacity; index++) {
+            struct launcher_result item = launcher_choice(d, index);
             int y = 181 + (index - d->launcher_offset) * 54;
             bool selected = index == d->launcher_selected;
-            fill(d, d->background, 32, y, d->width - 64, 48,
-                 selected ? 29 : 16, selected ? 65 : 38, selected ? 72 : 51);
-            if (selected) fill(d, d->background, 32, y, 3, 48, 77, 211, 194);
-            label(d, d->background, 48, y + 22, d->font_body, item->name, 239, 245, 255);
+            rounded(d, d->background, 30, y, d->width - 60, 48, 7,
+                    selected ? 41 : 25, selected ? 67 : 39, selected ? 79 : 57);
+            if (selected) fill(d, d->background, 30, y + 9, 3, 30, 77, 211, 194);
+            label(d, d->background, 48, y + 22, d->font_body, item.name, 239, 245, 255);
             label(d, d->background, d->width / 2, y + 21, d->font_small,
-                  item->detail, 157, 176, 198);
-            hit(d, d->background, 32, y, d->width - 64, 48, item->action, item->index);
-        }
+                  item.detail, 157, 176, 198);
+            hit(d, d->background, 30, y, d->width - 60, 48, item.action, item.index);
     }
     char footer[128];
     snprintf(footer, sizeof footer, "%d results  ·  ↑↓ choose  ·  Enter open  ·  Esc close", count);
@@ -558,31 +640,30 @@ static void render_launcher(struct desktop *d) {
 }
 
 static void render_quick(struct desktop *d) {
-    fill(d, d->background, 0, 0, d->width, d->height, 8, 20, 31);
-    fill(d, d->background, 0, 0, 5, d->height, 77, 211, 194);
-    fill(d, d->background, 24, 23, 34, 34, 77, 211, 194);
-    label(d, d->background, 34, 48, d->font_body, "H", 8, 32, 39);
-    label(d, d->background, 73, 47, d->font_small, "HEURISM  /  QUICK CONTROLS", 77, 211, 194);
-    button(d, d->background, d->width - 96, 20, 72, 39,
+    fill(d, d->background, 0, 0, d->width, d->height, 20, 29, 44);
+    fill(d, d->background, 0, 0, d->width, 1, 73, 94, 113);
+    label(d, d->background, 25, 49, d->font_body, "Quick settings", 237, 244, 249);
+    button(d, d->background, d->width - 85, 19, 61, 39,
            "Close", SHOW_WORKSPACE, 0, false);
 
-    fill(d, d->background, 24, 82, d->width - 48, 122, 19, 43, 56);
-    fill(d, d->background, 24, 82, d->width - 48, 2, 215, 168, 101);
-    label(d, d->background, 42, 111, d->font_small,
-          d->address[0] ? "NETWORK  /  CONNECTED" : "NETWORK  /  OFFLINE",
-          215, 168, 101);
-    label(d, d->background, 42, 149, d->font_body,
+    rounded(d, d->background, 24, 82, d->width - 48, 122, 10, 32, 48, 66);
+    fill(d, d->background, 42, 106, 8, 8,
+         d->address[0] ? 75 : 211, d->address[0] ? 219 : 149,
+         d->address[0] ? 194 : 127);
+    label(d, d->background, 61, 117, d->font_small,
+          d->address[0] ? "Connected" : "Offline", 193, 210, 223);
+    label(d, d->background, 42, 152, d->font_body,
           d->address[0] ? d->address : "No Ethernet address", 239, 245, 255);
     label(d, d->background, 42, 182, d->font_small,
           d->dell ? "Speaker controls in Settings" : "Virtual audio; no physical speakers",
           157, 176, 198);
 
     label(d, d->background, 24, 245, d->font_small,
-          "APPEARANCE", 77, 211, 194);
+          "Appearance", 157, 176, 198);
     button(d, d->background, 24, 260, d->width - 48, 51,
            d->light ? "Switch to Night" : "Switch to Light", TOGGLE_THEME, 0, false);
     label(d, d->background, 24, 354, d->font_small,
-          "SYSTEM", 77, 211, 194);
+          "System", 157, 176, 198);
     int half = (d->width - 60) / 2;
     button(d, d->background, 24, 370, half, 49, "Settings", SHOW_SETTINGS, 0, false);
     button(d, d->background, 36 + half, 370, half, 49,
@@ -768,20 +849,27 @@ static void redraw(struct desktop *d) {
                              d->power_mode || d->quick_mode ? d->height - 28 : d->height - 155,
                              d->font_small,
                              d->notice, 80, 225, 190);
-    if (!d->settings_mode) render_dock(d);
+    if (!d->settings_mode) {
+        render_panel(d);
+        render_dock(d);
+    }
     XFlush(d->display);
 }
 
 static bool ensure_visible(struct desktop *d) {
-    XWindowAttributes background, dock;
+    XWindowAttributes background, dock, panel;
     if (!XGetWindowAttributes(d->display, d->background, &background) ||
-        !XGetWindowAttributes(d->display, d->dock, &dock)) return false;
-    bool remapped = background.map_state != IsViewable || dock.map_state != IsViewable;
+        !XGetWindowAttributes(d->display, d->dock, &dock) ||
+        !XGetWindowAttributes(d->display, d->panel, &panel)) return false;
+    bool remapped = background.map_state != IsViewable ||
+                    dock.map_state != IsViewable || panel.map_state != IsViewable;
     if (background.map_state != IsViewable) XMapWindow(d->display, d->background);
     if (dock.map_state != IsViewable) XMapWindow(d->display, d->dock);
+    if (panel.map_state != IsViewable) XMapWindow(d->display, d->panel);
     if (remapped) {
         XLowerWindow(d->display, d->background);
         XRaiseWindow(d->display, d->dock);
+        XRaiseWindow(d->display, d->panel);
     }
     Window child;
     int x, y;
@@ -795,7 +883,9 @@ static bool ensure_visible(struct desktop *d) {
         x != d->dock_x || y != d->dock_y) return false;
     return XGetWindowAttributes(d->display, d->background, &background) &&
            XGetWindowAttributes(d->display, d->dock, &dock) &&
-           background.map_state == IsViewable && dock.map_state == IsViewable;
+           XGetWindowAttributes(d->display, d->panel, &panel) &&
+           background.map_state == IsViewable && dock.map_state == IsViewable &&
+           panel.map_state == IsViewable;
 }
 
 static void publish_health(struct desktop *d) {
@@ -817,7 +907,7 @@ static void publish_health(struct desktop *d) {
     json_object_object_add(record, "uid", json_object_new_int((int)getuid()));
     json_object_object_add(record, "release", json_object_new_string(executable));
     json_object_object_add(record, "boot_id", json_object_new_string(d->boot_id));
-    json_object_object_add(record, "version", json_object_new_string("native-0.2"));
+    json_object_object_add(record, "version", json_object_new_string("native-0.7"));
     const char *pages[] = {"workspace", "menu", "overview", "settings", "device", "network", "sound"};
     _Static_assert(sizeof pages / sizeof pages[0] == SOUND + 1,
                    "every desktop page needs a health name");
@@ -922,6 +1012,15 @@ static void run_action(struct desktop *d, enum action action, int index) {
         case LAUNCH_BROWSER: launch(d, "/usr/bin/firefox", NULL); break;
         case LAUNCH_TERMINAL: launch_native(d, "heurism-terminal"); break;
         case LAUNCH_KEYBOARD: launch(d, "/usr/bin/onboard", NULL); break;
+        case LAUNCH_INSTALLED: {
+            GAppInfo *info = G_APP_INFO(g_list_nth_data(d->installed_apps, (guint)index));
+            GError *error = NULL;
+            if (!info || !g_app_info_launch(info, NULL, NULL, &error))
+                snprintf(d->notice, sizeof d->notice, "Could not start application: %s",
+                         error ? error->message : "unavailable");
+            if (error) g_error_free(error);
+            break;
+        }
         case SHOW_SETTINGS: launch_self(d, "--settings"); break;
         case SHOW_OVERVIEW: launch_self(d, "--overview"); break;
         case SHOW_NETWORK: launch_self(d, "--network"); break;
@@ -1141,6 +1240,13 @@ static void set_window_type(struct desktop *d, Window window, Atom type) {
                     (unsigned char *)&type, 1);
 }
 
+static void set_borderless(struct desktop *d, Window window) {
+    Atom motif = XInternAtom(d->display, "_MOTIF_WM_HINTS", False);
+    unsigned long hints[5] = {2, 0, 0, 0, 0};
+    XChangeProperty(d->display, window, motif, motif, 32, PropModeReplace,
+                    (unsigned char *)hints, 5);
+}
+
 static void install_launcher_shortcut(struct desktop *d) {
     KeyCode space = XKeysymToKeycode(d->display, XK_space);
     if (!space) return;
@@ -1209,10 +1315,10 @@ static bool setup_x(struct desktop *d) {
             if (d->height > maximum_height) d->height = maximum_height;
         }
     }
-    d->dock_width = d->width - 48;
-    if (d->dock_width > 1040) d->dock_width = 1040;
+    d->dock_width = d->width - 32;
+    if (d->dock_width > 720) d->dock_width = 720;
     d->dock_x = (d->width - d->dock_width) / 2;
-    d->dock_y = d->height - 84;
+    d->dock_y = d->height - 94;
     d->type_atom = XInternAtom(d->display, "_NET_WM_WINDOW_TYPE", False);
     d->desktop_atom = XInternAtom(d->display, "_NET_WM_WINDOW_TYPE_DESKTOP", False);
     d->dock_atom = XInternAtom(d->display, "_NET_WM_WINDOW_TYPE_DOCK", False);
@@ -1242,7 +1348,9 @@ static bool setup_x(struct desktop *d) {
         XSetWMNormalHints(d->display, d->background, &hints);
     }
     d->dock = XCreateSimpleWindow(d->display, root, d->dock_x, d->dock_y,
-                                   (unsigned)d->dock_width, 68, 0, 0, 0);
+                                   (unsigned)d->dock_width, 78, 0, 0, 0);
+    d->panel = XCreateSimpleWindow(d->display, root, 0, 0,
+                                    (unsigned)d->width, 48, 0, 0, 0);
     XStoreName(d->display, d->background,
                d->launcher_mode ? "Heurism Launcher" :
                d->quick_mode ? "Heurism Quick Controls" :
@@ -1251,29 +1359,44 @@ static bool setup_x(struct desktop *d) {
                d->settings_mode && d->page == OVERVIEW ? "Heurism System" :
                d->settings_mode ? "Heurism Settings" : "Heurism desktop");
     XStoreName(d->display, d->dock, "Heurism dock");
+    XStoreName(d->display, d->panel, "Heurism panel");
     if (!d->settings_mode) {
         set_window_type(d, d->background, d->desktop_atom);
         set_window_type(d, d->dock, d->dock_atom);
-    } else if (d->launcher_mode || d->quick_mode)
+        set_window_type(d, d->panel, d->dock_atom);
+    } else if (d->launcher_mode || d->quick_mode) {
         XChangeProperty(d->display, d->background, d->state_atom, XA_ATOM, 32,
                         PropModeReplace, (unsigned char *)&d->skip_taskbar_atom, 1);
-    long strut[4] = {0, 0, 0, 84};
-    if (!d->settings_mode)
+        set_borderless(d, d->background);
+    }
+    long strut[4] = {0, 0, 0, 94};
+    if (!d->settings_mode) {
         XChangeProperty(d->display, d->dock, d->strut_atom, XA_CARDINAL, 32,
                         PropModeReplace, (unsigned char *)strut, 4);
+        strut[2] = 48;
+        strut[3] = 0;
+        XChangeProperty(d->display, d->panel, d->strut_atom, XA_CARDINAL, 32,
+                        PropModeReplace, (unsigned char *)strut, 4);
+    }
     XSelectInput(d->display, d->background, ExposureMask | ButtonPressMask | KeyPressMask);
     XSelectInput(d->display, d->dock, ExposureMask | ButtonPressMask | KeyPressMask);
+    XSelectInput(d->display, d->panel, ExposureMask | ButtonPressMask | KeyPressMask);
     d->gc = XCreateGC(d->display, d->background, 0, NULL);
     Colormap colormap = DefaultColormap(d->display, d->screen);
     d->background_draw = XftDrawCreate(d->display, d->background, d->visual, colormap);
     d->dock_draw = XftDrawCreate(d->display, d->dock, d->visual, colormap);
+    d->panel_draw = XftDrawCreate(d->display, d->panel, d->visual, colormap);
     d->font_small = XftFontOpenName(d->display, d->screen, "DejaVu Sans:size=12");
     d->font_body = XftFontOpenName(d->display, d->screen, "DejaVu Sans:size=15");
     d->font_large = XftFontOpenName(d->display, d->screen, "DejaVu Sans:bold:size=34");
-    if (!d->background_draw || !d->dock_draw || !d->font_small || !d->font_body ||
+    if (!d->background_draw || !d->dock_draw || !d->panel_draw ||
+        !d->font_small || !d->font_body ||
         !d->font_large) return false;
     XMapWindow(d->display, d->background);
-    if (!d->settings_mode) XMapRaised(d->display, d->dock);
+    if (!d->settings_mode) {
+        XMapRaised(d->display, d->dock);
+        XMapRaised(d->display, d->panel);
+    }
     XSync(d->display, False);
     if (d->launcher_mode || d->quick_mode) {
         Atom selection = XInternAtom(d->display,
@@ -1330,7 +1453,7 @@ static int show_home(void) {
 int main(int argc, char **argv) {
     setlocale(LC_ALL, "");
     if (argc == 2 && !strcmp(argv[1], "--version")) {
-        puts("Heurism desktop 0.6 (C/X11/Xft)"); return 0;
+        puts("Heurism desktop 0.7 (C/X11/Xft)"); return 0;
     }
     if (argc == 2 && !strcmp(argv[1], "--home")) return show_home();
     struct desktop d = {.page = WORKSPACE, .control_socket = DEFAULT_SOCKET,
@@ -1359,6 +1482,7 @@ int main(int argc, char **argv) {
     else if (argc != 1) return fprintf(stderr, "usage: heurism-desktop [--settings|--launcher|--quick|--overview|--network|--power|--socket path]\n"), 2;
     signal(SIGCHLD, SIG_IGN);
     if (!setup_x(&d)) return fprintf(stderr, "heurism-desktop: X display unavailable\n"), 1;
+    if (d.launcher_mode) load_installed_apps(&d);
     if (!d.settings_mode) install_launcher_shortcut(&d);
     refresh_status(&d);
     refresh_page(&d);
@@ -1454,6 +1578,8 @@ int main(int argc, char **argv) {
                 enum action action = key == XK_F1 ? SHOW_OVERVIEW :
                                      key == XK_F2 ? SHOW_SETTINGS :
                                      key == XK_F3 ? SHOW_DEVICE :
+                                     key == XK_F5 ? SHOW_NETWORK :
+                                     key == XK_F6 ? SHOW_SOUND :
                                      key == XK_F4 || key == XK_Escape ?
                                          d.power_mode ? SHOW_WORKSPACE :
                                          (d.settings_mode ? SHOW_MENU : SHOW_WORKSPACE) : NONE;

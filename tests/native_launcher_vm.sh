@@ -13,15 +13,38 @@ for program in Xvfb xfwm4 xfconf-query xdotool xprop xwd dbus-run-session \
     xfce4-screensaver-command; do
     command -v "$program" >/dev/null
 done
+case "${2:-1280x800}" in 1280x800|1920x1080) resolution=${2:-1280x800} ;; *) exit 1 ;; esac
+screen_width=${resolution%x*}
+screen_height=${resolution#*x}
+dock_left=$(( (screen_width - 720) / 2 ))
+dock_click_y=$(( screen_height - 94 + 42 ))
+launcher_x=$(( dock_left + 40 ))
+files_x=$(( dock_left + 118 ))
+quick_x=$(( dock_left + 670 ))
 test ! -e /tmp/.X91-lock
 work=$(mktemp -d /tmp/heurism-launcher-test.XXXXXX)
 chown companion-ui:companion-ui "$work"
 chmod 700 "$work"
 install -d -o companion-ui -g companion-ui -m 700 "$work/run"
+install -d -o companion-ui -g companion-ui -m 755 "$work/data/applications"
+cat >"$work/data/applications/sample-launcher-test.desktop" <<EOF
+[Desktop Entry]
+Type=Application
+Name=Sample Launcher Test
+Exec=/bin/touch $work/fixture-launched
+EOF
+cat >"$work/data/applications/sample-hidden-test.desktop" <<EOF
+[Desktop Entry]
+Type=Application
+Name=Hidden Sample Test
+NoDisplay=true
+Exec=/bin/touch $work/hidden-launched
+EOF
+chown companion-ui:companion-ui "$work/data/applications/"*.desktop
 install -d -o companion-ui -g companion-ui -m 755 \
     "$work/.themes" "$work/.themes/Heurism" "$work/.themes/Heurism/xfwm4"
 su -s /bin/sh -c "tar -xzf '$release/heurism-xfwm4.tar.gz' -C '$work/.themes/Heurism/xfwm4'" companion-ui
-Xvfb :91 -screen 0 1280x800x24 -nolisten tcp -ac >"$work/xvfb.log" 2>&1 &
+Xvfb :91 -screen 0 ${resolution}x24 -nolisten tcp -ac >"$work/xvfb.log" 2>&1 &
 xvfb=$!
 wm=0
 desktop=0
@@ -44,20 +67,21 @@ cleanup() {
 }
 trap cleanup EXIT HUP INT TERM
 sleep 2
-su -s /bin/sh -c "HOME=$work DISPLAY=:91 XAUTHORITY=/dev/null XDG_RUNTIME_DIR=$work/run dbus-run-session sh -c 'xfconf-query -c xfwm4 -p /general/theme -n -t string -s Heurism; exec xfwm4'" companion-ui >"$work/xfwm.log" 2>&1 &
+su -s /bin/sh -c "HOME=$work XDG_DATA_HOME=$work/data DISPLAY=:91 XAUTHORITY=/dev/null XDG_RUNTIME_DIR=$work/run dbus-run-session sh -c 'xfconf-query -c xfwm4 -p /general/theme -n -t string -s Heurism; exec xfwm4'" companion-ui >"$work/xfwm.log" 2>&1 &
 wm=$!
 sleep 3
-su -s /bin/sh -c "HOME=$work DISPLAY=:91 XAUTHORITY=/dev/null XDG_RUNTIME_DIR=$work/run exec '$release/heurism-desktop'" companion-ui >"$work/desktop.log" 2>&1 &
+su -s /bin/sh -c "HOME=$work XDG_DATA_HOME=$work/data DISPLAY=:91 XAUTHORITY=/dev/null XDG_RUNTIME_DIR=$work/run exec '$release/heurism-desktop'" companion-ui >"$work/desktop.log" 2>&1 &
 desktop=$!
 sleep 3
 export DISPLAY=:91 XAUTHORITY=/dev/null
+xdotool search --name '^Heurism panel$' >/dev/null
 xwd -root -silent -out "$work/workspace.xwd"
-xdotool mousemove 180 748 click 1
+xdotool mousemove "$launcher_x" "$dock_click_y" click 1
 sleep 2
 launcher=$(xdotool search --name '^Heurism Launcher$' | tail -n 1)
 test -n "$launcher"
 xprop -id "$launcher" _NET_WM_STATE | grep -q '_NET_WM_STATE_SKIP_TASKBAR'
-xdotool mousemove 180 748 click 1
+xdotool mousemove "$launcher_x" "$dock_click_y" click 1
 sleep 1
 test "$(xdotool search --name '^Heurism Launcher$' | wc -l)" = 1
 xdotool windowactivate --sync "$launcher"
@@ -78,7 +102,7 @@ xdotool windowactivate --sync "$launcher"
 xdotool key Escape
 sleep 1
 if xdotool search --name '^Heurism Launcher$' >/dev/null 2>&1; then exit 1; fi
-xdotool mousemove 286 748 click 1
+xdotool mousemove "$files_x" "$dock_click_y" click 1
 sleep 2
 files=$(xdotool search --name '^Heurism Files$' | tail -n 1)
 test -n "$files"
@@ -95,12 +119,12 @@ xdotool key Return
 sleep 2
 test "$(xdotool getactivewindow)" = "$terminal"
 if xdotool search --name '^Heurism Launcher$' >/dev/null 2>&1; then exit 1; fi
-xdotool mousemove 1000 748 click 1
+xdotool mousemove "$quick_x" "$dock_click_y" click 1
 sleep 1
 quick=$(xdotool search --name '^Heurism Quick Controls$' | tail -n 1)
 test -n "$quick"
 xprop -id "$quick" _NET_WM_STATE | grep -q '_NET_WM_STATE_SKIP_TASKBAR'
-xdotool mousemove 1000 748 click 1
+xdotool mousemove "$quick_x" "$dock_click_y" click 1
 sleep 1
 test "$(xdotool search --name '^Heurism Quick Controls$' | wc -l)" = 1
 xwd -root -silent -out "$work/quick-controls.xwd"
@@ -117,19 +141,19 @@ xdotool mousemove --window "$quick" 80 395 click 1
 sleep 2
 xdotool search --name '^Heurism Settings$' >/dev/null
 if xdotool search --name '^Heurism Quick Controls$' >/dev/null 2>&1; then exit 1; fi
-xdotool mousemove 1000 748 click 1
+xdotool mousemove "$quick_x" "$dock_click_y" click 1
 sleep 1
 quick=$(xdotool search --name '^Heurism Quick Controls$' | tail -n 1)
 xdotool mousemove --window "$quick" 365 395 click 1
 sleep 2
 xdotool search --name '^Heurism Network$' >/dev/null
-xdotool mousemove 1000 748 click 1
+xdotool mousemove "$quick_x" "$dock_click_y" click 1
 sleep 1
 quick=$(xdotool search --name '^Heurism Quick Controls$' | tail -n 1)
 xdotool mousemove --window "$quick" 365 460 click 1
 sleep 2
 xdotool search --name '^Heurism Power$' >/dev/null
-xdotool mousemove 1000 748 click 1
+xdotool mousemove "$quick_x" "$dock_click_y" click 1
 sleep 1
 quick=$(xdotool search --name '^Heurism Quick Controls$' | tail -n 1)
 xdotool windowactivate --sync "$quick"
@@ -137,7 +161,7 @@ xdotool key Escape
 sleep 1
 if xdotool search --name '^Heurism Quick Controls$' >/dev/null 2>&1; then exit 1; fi
 for action in settings power; do
-    xdotool mousemove 180 748 click 1
+    xdotool mousemove "$launcher_x" "$dock_click_y" click 1
     sleep 1
     launcher=$(xdotool search --name '^Heurism Launcher$' | tail -n 1)
     xdotool windowactivate --sync "$launcher"
@@ -147,11 +171,34 @@ for action in settings power; do
     if [ "$action" = settings ]; then title='Heurism Settings'; else title='Heurism Power'; fi
     xdotool search --name "^$title$" >/dev/null
 done
-xdotool mousemove 180 748 click 1
+xdotool mousemove "$launcher_x" "$dock_click_y" click 1
 sleep 1
 launcher=$(xdotool search --name '^Heurism Launcher$' | tail -n 1)
 xdotool windowactivate --sync "$launcher"
 xdotool key Escape
 sleep 1
 if xdotool search --name '^Heurism Launcher$' >/dev/null 2>&1; then exit 1; fi
-echo "C launcher, window switching and quick controls passed; captures: $work/workspace.xwd $work/launcher.xwd $work/window-switch.xwd $work/quick-controls.xwd"
+xdotool mousemove "$launcher_x" "$dock_click_y" click 1
+sleep 1
+launcher=$(xdotool search --name '^Heurism Launcher$' | tail -n 1)
+xdotool windowactivate --sync "$launcher"
+xdotool type --clearmodifiers 'Sample Launcher Test'
+sleep 1
+xwd -root -silent -out "$work/installed-app.xwd"
+xdotool key Return
+sleep 2
+test -f "$work/fixture-launched"
+test "$(stat -c %u "$work/fixture-launched")" = "$(id -u companion-ui)"
+test ! -e "$work/hidden-launched"
+if xdotool search --name '^Heurism Launcher$' >/dev/null 2>&1; then exit 1; fi
+xdotool mousemove "$launcher_x" "$dock_click_y" click 1
+sleep 1
+launcher=$(xdotool search --name '^Heurism Launcher$' | tail -n 1)
+xdotool windowactivate --sync "$launcher"
+xdotool type --clearmodifiers 'Hidden Sample Test'
+xdotool key Return
+sleep 1
+test ! -e "$work/hidden-launched"
+xdotool search --name '^Heurism Launcher$' >/dev/null
+xdotool key Escape
+echo "C launcher, installed-app filtering, window switching and quick controls passed; captures: $work/workspace.xwd $work/launcher.xwd $work/window-switch.xwd $work/quick-controls.xwd $work/installed-app.xwd"

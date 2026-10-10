@@ -1,5 +1,29 @@
 # Current product direction
 
+On 2026-10-10 the owner rejected the dashboard-like C desktop as dated and
+asked for a modern, window-first Heurism workspace. The new C desktop 0.7
+removes the large app and system cards. It has a persistent top status panel,
+compact centered dock with drawn app symbols and live window switching,
+searchable installed applications through GIO, borderless launcher and quick
+controls, and a quieter Xfwm theme. Its C settings still expose Dell hardware.
+The active sealed VM release is
+`/opt/heurism/native/releases/heurism-os-20261010T160753Z-5683`; normal VM reboot
+returned boot `faecd695-a4c4-4dc3-b8b5-6645e5b7ecea` with root SSH/watch,
+control, UI and protected hashes healthy. The ready checkpoint is
+`Heurism-modern-workspace-20261010`, UUID
+`daa80285-d64f-415d-ad99-d5c4e904369e`. The active Dell release is
+`/opt/heurism/native/releases/heurism-os-dell-20261010T161019Z-5092`, activated
+with the Dell-only rollback gate on the existing boot
+`edb102d9-25c6-409c-aa17-181fea3eaf41`. Isolated Dell-size workspace and
+hardware-settings tests passed; the live UID-1000 UI, panel, dock, four
+management services, the live PAM lock query on the session D-Bus, and eight protected hashes passed. Temporary build
+packages were removed. The Dell was not rebooted, and physical viewing,
+touch acceptance and persistence across a Dell reboot remain unverified.
+See `docs/heurism-modern-workspace.md`. The remaining C Files/Editor and
+Settings pages still need a broader visual and usability redesign; do not
+call the full distinct-desktop goal complete. Keep Dell firmware/SSD/SSH
+guards and the locked Xfce recovery session intact.
+
 On 2026-10-10 the physical Dell now selects `heurism` in
 `/etc/companion/native-session-mode`. The guarded Dell installer sealed and
 activated `/opt/heurism/native/releases/heurism-os-dell-20261010T153748Z-15862`

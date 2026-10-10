@@ -9,12 +9,12 @@ from PIL import Image, ImageDraw
 
 
 OUTPUT = Path(__file__).resolve().parents[1] / "userspace/native/heurism-xfwm4.tar.gz"
-ACTIVE = (12, 32, 43, 255)
-INACTIVE = (28, 43, 53, 255)
+ACTIVE = (25, 35, 52, 255)
+INACTIVE = (29, 40, 57, 255)
 ACCENT = (77, 211, 194, 255)
-WARM = (215, 168, 101, 255)
+WARM = (225, 151, 144, 255)
 TEXT = (239, 245, 255, 255)
-MUTED = (146, 166, 178, 255)
+MUTED = (146, 166, 184, 255)
 
 
 def png(image):
@@ -29,47 +29,47 @@ def image(width, height, color):
 
 def frame_piece(name, active):
     color = ACTIVE if active else INACTIVE
-    edge = ACCENT if active else MUTED
+    edge = (56, 73, 92, 255) if active else (42, 56, 73, 255)
     if name.startswith("title-"):
         result = image(8, 34, color)
-        ImageDraw.Draw(result).rectangle((0, 32, 7, 33), fill=edge)
+        ImageDraw.Draw(result).rectangle((0, 33, 7, 33), fill=edge)
     elif name.startswith("top-"):
         result = image(8, 34, color)
         draw = ImageDraw.Draw(result)
-        draw.rectangle((0, 32, 7, 33), fill=edge)
+        draw.rectangle((0, 33, 7, 33), fill=edge)
         if "left" in name:
-            draw.rectangle((0, 4, 1, 33), fill=edge)
-            draw.rectangle((0, 0, 3, 1), fill=edge)
+            draw.rectangle((0, 4, 0, 33), fill=edge)
+            draw.rectangle((0, 0, 3, 0), fill=edge)
         else:
-            draw.rectangle((6, 4, 7, 33), fill=edge)
-            draw.rectangle((4, 0, 7, 1), fill=edge)
+            draw.rectangle((7, 4, 7, 33), fill=edge)
+            draw.rectangle((4, 0, 7, 0), fill=edge)
     elif name in ("left", "right"):
         result = image(5, 24, color)
         draw = ImageDraw.Draw(result)
-        draw.rectangle((0 if name == "left" else 3, 0,
-                        1 if name == "left" else 4, 23), fill=edge)
+        draw.rectangle((0 if name == "left" else 4, 0,
+                        0 if name == "left" else 4, 23), fill=edge)
     elif name == "bottom":
         result = image(24, 5, color)
-        ImageDraw.Draw(result).rectangle((0, 3, 23, 4), fill=edge)
+        ImageDraw.Draw(result).rectangle((0, 4, 23, 4), fill=edge)
     else:
         result = image(16, 16, color)
         draw = ImageDraw.Draw(result)
-        draw.rectangle((0, 14, 15, 15), fill=edge)
-        draw.rectangle((0 if "left" in name else 14, 0,
-                        1 if "left" in name else 15, 15), fill=edge)
+        draw.rectangle((0, 15, 15, 15), fill=edge)
+        draw.rectangle((0 if "left" in name else 15, 0,
+                        0 if "left" in name else 15, 15), fill=edge)
     return result
 
 
 def button(kind, state, toggled=False):
     active = state != "inactive"
-    background = (30, 69, 75, 255) if state == "prelight" else (
-        (42, 87, 90, 255) if state == "pressed" else ACTIVE if active else INACTIVE)
+    background = (47, 65, 83, 255) if state == "prelight" else (
+        (61, 81, 100, 255) if state == "pressed" else ACTIVE if active else INACTIVE)
     width = 22 if kind == "menu" else 21
     result = image(width, 34, background)
     draw = ImageDraw.Draw(result)
-    color = MUTED if not active else WARM if kind == "close" else TEXT
+    color = MUTED if not active else TEXT
     if state == "prelight":
-        color = ACCENT
+        color = WARM if kind == "close" else ACCENT
     if state == "pressed":
         color = (8, 32, 39, 255)
     center = width // 2
@@ -99,8 +99,8 @@ def button(kind, state, toggled=False):
 def main():
     files = {
         "themerc": b"active_text_color=#eff5ff\n"
-                    b"inactive_text_color=#92a6b2\n"
-                    b"button_offset=4\nbutton_spacing=3\n"
+                    b"inactive_text_color=#92a6b8\n"
+                    b"button_layout=|HMC\nbutton_offset=4\nbutton_spacing=3\n"
                     b"full_width_title=true\nshow_app_icon=false\n"
                     b"title_horizontal_offset=12\n"
                     b"title_shadow_active=false\ntitle_shadow_inactive=false\n"

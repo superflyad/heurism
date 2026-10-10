@@ -1,5 +1,11 @@
 # Heurism C desktop on the physical Dell
 
+The first release described below is historical. Desktop 0.7 replaced it on
+the same boot with sealed release
+`/opt/heurism/native/releases/heurism-os-dell-20261010T161019Z-5092`.
+The window-first layout, isolated Dell tests, live health and remaining limits
+are recorded in [the modern workspace pass](heurism-modern-workspace.md).
+
 On 2026-10-10 the guarded Dell installer assembled sealed release
 `/opt/heurism/native/releases/heurism-os-dell-20261010T153748Z-15862` from
 the VM-verified C binaries and current Heurism theme/session assets. The first
