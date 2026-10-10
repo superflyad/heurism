@@ -27,6 +27,10 @@ if /opt/heurism/native/current/heurism-session-config; then
     trap - TERM INT HUP
     if [ ! -e /run/heurism-desktop/startup-failed ]; then exit "$result"; fi
 fi
+if [ -e /etc/heurism/desktop-lock ]; then
+    echo 'Locked session failed; leaving console unavailable while root SSH/watch remain active' >&2
+    exit 1
+fi
 if [ -x /opt/companion/desktop/session.sh ]; then
     echo 'Native session failed; starting sealed legacy recovery release' >&2
     umask 022

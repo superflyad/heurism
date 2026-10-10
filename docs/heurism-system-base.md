@@ -6,6 +6,13 @@ manager, base Unix tools and many applications. Xfce is the established desktop
 session until Heurism has an equally usable alternative. The active Heurism
 shell, terminal, controls, settings and release verifier are C programs.
 
+The fresh VM image now has unique local account passwords and a locked Xfce
+session; `CompanionDev` has a host-checkpoint system upgrade/rollback path.
+The Dell still has a single ext4 root and no independent full-OS rollback.
+Current evidence and the physical migration gate are in
+[session security and updates](session-security-updates.md). The older image
+candidate and future gates below describe the earlier baseline.
+
 ## Identity and provenance
 
 On 2026-10-09 the VM and Dell installed `platform/heurism/os-release` as the

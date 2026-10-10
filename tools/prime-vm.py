@@ -9,9 +9,14 @@ from datetime import datetime, timezone
 import hashlib
 import json
 from pathlib import Path
+import secrets
 import subprocess
 import tarfile
 import time
+try:
+    from secret_acl import write_restricted
+except ModuleNotFoundError:
+    from tools.secret_acl import write_restricted
 
 REPO = Path(__file__).resolve().parents[1]
 OUT = REPO/'build/prime-vm'
@@ -26,11 +31,11 @@ def call(args, **kwargs):
     return subprocess.run(args, check=True, **kwargs)
 
 
-def host(script):
+def host(script, timeout=60):
     encoded = base64.b64encode(("$ErrorActionPreference='Stop'; $ProgressPreference='SilentlyContinue';\n"+script).encode('utf-16le')).decode()
     result = subprocess.run(['ssh', '-o', 'BatchMode=yes', '-o', 'ConnectTimeout=8', 'primeserver',
                    'powershell', '-NoProfile', '-NonInteractive', '-EncodedCommand', encoded],
-                  capture_output=True, text=True, timeout=60)
+                  capture_output=True, text=True, timeout=timeout)
     if result.returncode:
         raise RuntimeError(result.stderr[:4000] or result.stdout[:4000] or 'PrimeServer command failed')
     return result.stdout.strip()
@@ -133,10 +138,18 @@ def build():
         call(['ssh-keygen', '-q', '-t', 'ed25519', '-N', '', '-C', 'companion-prime-vm', '-f', str(key)])
     native = native_archive()
     stage = '/var/lib/companion-vm-build/'+datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%SZ')
-    call(['ssh', 'prime-linux', 'sudo -n mkdir -p '+stage+' && sudo -n chown ubuntu:ubuntu '+stage])
+    build_id = stage.rsplit('/', 1)[-1]
+    root_password = KEYS/('image-root-console-'+build_id+'.txt')
+    desktop_password = KEYS/('image-desktop-unlock-'+build_id+'.txt')
+    write_restricted(root_password, secrets.token_hex(16))
+    write_restricted(desktop_password, secrets.token_hex(16))
+    call(['ssh', 'prime-linux', 'sudo -n mkdir -p '+stage+' && sudo -n chown ubuntu:ubuntu '+stage+
+          ' && sudo -n chmod 700 '+stage])
     staged_inputs = OUT/'stage-inputs'
     staged_inputs.mkdir(parents=True, exist_ok=True)
     for source, name in [(native, 'native.tar.gz'), (key.with_suffix('.pub'), 'client.pub'),
+                         (root_password, 'root-password'),
+                         (desktop_password, 'desktop-password'),
                          (REPO/'tools/build-hyperv-guest.sh', 'build.sh'),
                          (REPO/'platform/heurism/os-release', 'heurism-os-release'),
                          (REPO/'platform/heurism/upstream-release', 'heurism-upstream-release'),
@@ -145,10 +158,11 @@ def build():
                          (REPO/'platform/hyperv/companion-watch', 'companion-watch'),
                          (REPO/'platform/hyperv/watch.initd', 'watch.initd')]:
         local = source
-        if name not in ('native.tar.gz', 'client.pub'):
+        if name not in ('native.tar.gz', 'client.pub', 'root-password', 'desktop-password'):
             local = staged_inputs/name
             local.write_bytes(source.read_bytes().replace(b'\r\n', b'\n'))
         call(['scp', str(local), 'prime-linux:'+stage+'/'+name])
+    call(['ssh', 'prime-linux', 'chmod 600 '+stage+'/root-password '+stage+'/desktop-password'])
     (OUT/'builder.json').write_text(json.dumps({'stage': stage,
         'native_sha256': hashlib.sha256(native.read_bytes()).hexdigest()}, indent=2))
     call(['ssh', 'prime-linux', 'sudo -n bash '+stage+'/build.sh '+stage], timeout=1200)
@@ -304,15 +318,91 @@ Get-VM -Name '{NAME}' | Select-Object Name,State | ConvertTo-Json -Compress
     print(result)
 
 
+def upgrade_system(inject_failure=False):
+    """Upgrade the VM's complete root with a host-owned rollback point.
+
+    This deliberately has no Dell target. The host can restore the disk even
+    when the guest SSH or operating system no longer starts.
+    """
+    check_target()
+    before = subprocess.run(
+        ['ssh', *guest_options(), 'root@'+GUEST,
+         'cat /proc/sys/kernel/random/boot_id && '
+         'test "$(cat /sys/class/dmi/id/sys_vendor)" = "Microsoft Corporation" && '
+         'test "$(cat /sys/class/dmi/id/product_name)" = "Virtual Machine" && '
+         'test "$(cat /etc/companion/platform.json)" = "{\\"platform\\":\\"hyperv-dev\\"}" && '
+         '/opt/heurism/native/current/heurism-release verify >/dev/null && '
+         '/opt/heurism/native/current/heurism-release health >/dev/null && '
+         'printf "\\n"'], capture_output=True, text=True, timeout=20,
+        check=True).stdout.splitlines()[0]
+    name = 'Heurism-system-upgrade-'+datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%SZ')
+    result = host(f"if (Get-VMSnapshot -VMName '{NAME}' -Name '{name}' -ErrorAction SilentlyContinue) "
+                  f"{{ throw 'Checkpoint exists' }}; Checkpoint-VM -Name '{NAME}' -SnapshotName '{name}'; "
+                  f"Get-VMSnapshot -VMName '{NAME}' -Name '{name}' | Select-Object Name,Id | ConvertTo-Json -Compress")
+    print('Rollback checkpoint:', result, flush=True)
+    try:
+        guest("set -eu; "
+              "test \"$(cat /etc/apk/repositories)\" = \"$(printf 'https://dl-cdn.alpinelinux.org/alpine/v3.24/main\\nhttps://dl-cdn.alpinelinux.org/alpine/v3.24/community')\"; "
+              "test -n \"$(ls /etc/apk/keys/*.pub)\"; "
+              "umask 077; cp -p /boot/grub/grub.cfg /tmp/heurism-upgrade-grub.cfg; "
+              "sha256sum /etc/fstab /etc/network/interfaces /etc/ssh/sshd_config "
+              "/etc/ssh/ssh_host_ed25519_key.pub /boot/grub/grub.cfg "
+              "/boot/efi/EFI/BOOT/BOOTX64.EFI /etc/companion/platform.json "
+              "/etc/init.d/sshd /etc/init.d/companion-watch "
+              "/etc/init.d/heurism-control /etc/init.d/heurism-desktop "
+              ">/tmp/heurism-upgrade-guard.sha256; "
+              "apk update && apk upgrade --available; "
+              "cp -p /tmp/heurism-upgrade-grub.cfg /boot/grub/grub.cfg; "
+              "sha256sum -c /tmp/heurism-upgrade-guard.sha256; "
+              "apk info -v | LC_ALL=C sort >/etc/heurism/packages.installed; "
+              "while read -r old path; do sha256sum \"$path\"; done "
+              "</etc/companion/vm-protected.sha256 "
+              ">/etc/companion/vm-protected.sha256.new; "
+              "mv -f /etc/companion/vm-protected.sha256.new /etc/companion/vm-protected.sha256; "
+              "chmod 644 /etc/companion/vm-protected.sha256; "
+              "sha256sum -c /etc/companion/vm-protected.sha256; "
+              "/opt/heurism/native/current/heurism-release verify; "
+              "rc-service sshd status && rc-service companion-watch status && "
+              "rc-service heurism-control status && rc-service heurism-desktop status; "
+              "rm -f /tmp/heurism-upgrade-guard.sha256 /tmp/heurism-upgrade-grub.cfg; sync")
+        if inject_failure:
+            raise RuntimeError('Injected post-upgrade failure')
+        # A guest restart is safe here because Hyper-V and its checkpoint are
+        # independent of guest networking and firmware startup.
+        guest("nohup sh -c 'sleep 2; reboot' >/dev/null 2>&1 </dev/null &")
+        wait_ready(before)
+        guest("sha256sum -c /etc/companion/vm-protected.sha256 && "
+              "rc-service sshd status && rc-service companion-watch status && "
+              "rc-service heurism-control status && rc-service heurism-desktop status")
+        capture('heurism-system-upgrade-'+datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%SZ'),
+                require_ui=True)
+        print('Whole-system VM upgrade verified; rollback checkpoint retained:', name)
+    except Exception:
+        print('Upgrade failed; restoring host checkpoint:', name, flush=True)
+        host(f"Stop-VM -Name '{NAME}' -TurnOff -Force -ErrorAction SilentlyContinue; "
+             f"$s=@(Get-VMSnapshot -VMName '{NAME}' -Name '{name}'); "
+             f"if ($s.Count -ne 1) {{ throw 'Rollback checkpoint missing' }}; "
+             f"$s[0] | Restore-VMSnapshot -Confirm:$false; Start-VM -Name '{NAME}'",
+             timeout=180)
+        # The saved VM includes memory state. Force a separate fresh boot so
+        # this check proves disk rollback and startup, not resumed memory.
+        host(f"Restart-VM -Name '{NAME}' -Force", timeout=90)
+        wait_ready(before)
+        print('Host checkpoint restored and fresh VM boot verified:', name, flush=True)
+        raise
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('action', choices=['inventory', 'build', 'create', 'replace-disk', 'start', 'status', 'guest', 'wait', 'publish', 'capture', 'console', 'checkpoint', 'reset', 'restore'])
+    parser.add_argument('action', choices=['inventory', 'build', 'create', 'replace-disk', 'start', 'status', 'guest', 'wait', 'publish', 'capture', 'console', 'checkpoint', 'reset', 'restore', 'upgrade-system'])
     parser.add_argument('--command')
     parser.add_argument('--snapshot', default='Companion-C-runtime-ready')
     parser.add_argument('--name', default='heurism-vm')
     parser.add_argument('--surface', choices=['root', 'shell'], default='root')
     parser.add_argument('--after-boot')
     parser.add_argument('--require-ui', action='store_true')
+    parser.add_argument('--inject-failure', action='store_true',
+                        help='Exercise upgrade rollback after package installation (VM only)')
     args = parser.parse_args()
     if args.action == 'inventory':
         print(host("@{vm=@(Get-VM | Select-Object Name,State,Generation,MemoryAssigned,Path); switches=@(Get-VMSwitch | Select-Object Name,SwitchType); nat=@(Get-NetNat | Select-Object Name,InternalIPInterfaceAddressPrefix)} | ConvertTo-Json -Depth 4 -Compress"))
@@ -320,6 +410,8 @@ def main():
         build()
     elif args.action == 'create':
         create()
+    elif args.action == 'upgrade-system':
+        upgrade_system(args.inject_failure)
     elif args.action == 'replace-disk':
         replace_disk()
     elif args.action == 'publish':

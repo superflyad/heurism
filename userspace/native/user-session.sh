@@ -49,6 +49,10 @@ mode=xfce
 if [ -r /etc/companion/native-session-mode ]; then
     mode=$(cat /etc/companion/native-session-mode)
 fi
+if [ -e /etc/heurism/desktop-lock ] && [ "$mode" != xfce ]; then
+    echo 'Locked desktop requires the Xfce session' >&2
+    exit 1
+fi
 if [ "$mode" = native ]; then
     native_session
 fi
@@ -88,12 +92,36 @@ done
 if [ "$ready" = 0 ]; then
     kill "$session" 2>/dev/null || true
     wait "$session" 2>/dev/null || true
+    if [ -e /etc/heurism/desktop-lock ]; then
+        echo 'Xfce failed before lock; authenticated desktop unavailable' >&2
+        exit 1
+    fi
     echo 'Xfce session did not become healthy; starting C workspace' >&2
     native_session replace
 fi
 sh "$release/xfce-power-panel.sh" >>"$state/xfce-panel.log" 2>&1
 sh "$release/heurism-look.sh" >>"$state/xfce-look.log" 2>&1 ||
     echo 'Heurism look could not be applied; Xfce remains usable' >&2
+if [ -e /etc/heurism/desktop-lock ]; then
+    command -v xfce4-screensaver-command >/dev/null
+    locked=0
+    for attempt in 1 2 3 4 5 6 7 8 9 10; do
+        xfce4-screensaver-command --lock >/dev/null 2>&1 || true
+        if LC_ALL=C xfce4-screensaver-command --query 2>/dev/null |
+           grep -Fxq 'The screensaver is active'; then
+            locked=1
+            break
+        fi
+        sleep 1
+    done
+    if [ "$locked" != 1 ]; then
+        echo 'Desktop lock did not activate' >&2
+        kill "$session" 2>/dev/null || true
+        wait "$session" 2>/dev/null || true
+        exit 1
+    fi
+fi
+
 umask 077
 resolved=$(readlink -f "$release")
 boot=$(cat /proc/sys/kernel/random/boot_id)
@@ -102,4 +130,15 @@ temporary="$health.tmp.$$"
 printf '{"pid":%s,"uid":%s,"release":"%s","boot_id":"%s","session":"xfce","page":"workspace"}\n' \
     "$session" "$(id -u)" "$resolved" "$boot" >"$temporary"
 mv -f "$temporary" "$health"
+if [ -e /etc/heurism/desktop-lock ]; then
+    while kill -0 "$session" 2>/dev/null; do
+        if ! pgrep -u "$(id -u)" -f '^xfce4-screensaver($| )' >/dev/null; then
+            echo 'Desktop lock process exited; ending graphical session' >&2
+            kill "$session" 2>/dev/null || true
+            wait "$session" 2>/dev/null || true
+            exit 1
+        fi
+        sleep 1
+    done
+fi
 wait "$session"

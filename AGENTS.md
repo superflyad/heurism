@@ -1,5 +1,31 @@
 # Current product direction
 
+On 2026-10-09 the owner asked to close session-security and whole-system
+update/rollback gaps. The Dell root console's empty password was replaced
+with a random local password; `companion-ui` received a separate random PAM
+unlock password. Owner-only Windows ACL credential files are under ignored
+`artifacts/ssh/dell-root-console-recovery.txt` and
+`artifacts/ssh/dell-desktop-unlock.txt`. Pinned root SSH remains key-only.
+VM-tested `xfce4-screensaver` startup locking, five-minute idle locking and
+locker-crash session restart are now active on the Dell in sealed release
+`/opt/heurism/native/releases/heurism-os-dell-20261010T013332Z-20380`.
+The Dell's boot ID is still `edb102d9-25c6-409c-aa17-181fea3eaf41`:
+**no physical reboot of this release has been run**. SSH/watch/control/Xfce,
+locked-session query, protected hashes and default NVRAM orders passed after
+graphical restarts. VM release
+`/opt/heurism/native/releases/heurism-os-20261010T013054Z-3396` passed
+hard-reset startup lock, password unlock and forced-locker-crash recovery.
+VM host-checkpoint `upgrade-system` updated 15 packages including Linux LTS
+to 6.18.55-r0 and returned fresh healthy boot; injected failures restored
+the previous full disk and fresh boot. The fresh image builder now gives root
+and desktop unique nonempty passwords and includes the lock by default.
+Image SHA256 `50aa6535210a33adcf6c01a2b5f310b3020a3b3f4042d104efae6450380cd4e5`
+booted isolated `HeurismCandidate` with lock/health/protected files verified.
+This does not create a Dell whole-OS rollback: Dell remains single-root ext4
+with no independent firmware reset. Do not update its kernel/bootloader or
+repartition unattended. X11 shared UID 1000 and unencrypted disk remain
+material security gaps. See `docs/session-security-updates.md`.
+
 On 2026-10-09 the owner directed work toward substantive OS usability beyond
 wallpaper. Source revision `0572384` added bounded Tab completion to the C
 shell and real PTY regression cases. VM release
