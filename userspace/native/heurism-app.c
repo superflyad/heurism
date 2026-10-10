@@ -4,6 +4,7 @@
 #include <X11/Xutil.h>
 #include <X11/keysym.h>
 #include <X11/Xft/Xft.h>
+#include <gio/gio.h>
 #include <dirent.h>
 #include <errno.h>
 #include <fcntl.h>
@@ -23,11 +24,14 @@
 #define MAX_FILE (4 * 1024 * 1024)
 #define MAX_ENTRIES 2000
 #define ROW_HEIGHT 32
+#define FILE_ROW_HEIGHT 42
+#define FILE_ROW_TOP 198
 
 enum mode { FILES, EDITOR };
 enum prompt { NO_PROMPT, NEW_FOLDER, RENAME, TRASH_CONFIRM, OPEN_PATH, SAVE_PATH };
 enum command { HOME, UP, OPEN, CREATE, CHANGE_NAME, TRASH, RESTORE, REFRESH,
-               TRASH_BIN, NEW, SAVE, SAVE_AS };
+               TRASH_BIN, DOCUMENTS, DOWNLOADS, PICTURES, TOGGLE_HIDDEN,
+               LOCATION, NEW, SAVE, SAVE_AS };
 struct entry { char name[NAME_MAX + 1]; bool directory; off_t size; };
 struct button { int x, width; enum command command; const char *label; };
 struct app {
@@ -37,7 +41,7 @@ struct app {
     Visual *visual;
     GC gc;
     XftDraw *draw;
-    XftFont *font, *font_small;
+    XftFont *font, *font_small, *font_title;
     XIM input_method;
     XIC input_context;
     int screen, width, height;
@@ -53,6 +57,7 @@ struct app {
     size_t length, cursor;
     int scroll_line;
     bool dirty;
+    bool show_hidden;
     time_t last_draft;
     Time last_click;
 };
@@ -76,6 +81,20 @@ static void box(struct app *a, int x, int y, int width, int height,
     if (width <= 0 || height <= 0) return;
     XSetForeground(a->display, a->gc, pixel(a, red, green, blue));
     XFillRectangle(a->display, a->window, a->gc, x, y, (unsigned)width, (unsigned)height);
+}
+
+static void round_box(struct app *a, int x, int y, int width, int height, int radius,
+                      unsigned red, unsigned green, unsigned blue) {
+    if (width <= radius * 2 || height <= radius * 2) return;
+    box(a, x + radius, y, width - radius * 2, height, red, green, blue);
+    box(a, x, y + radius, width, height - radius * 2, red, green, blue);
+    XSetForeground(a->display, a->gc, pixel(a, red, green, blue));
+    int corners[4][2] = {{x, y}, {x + width - radius * 2, y},
+                         {x, y + height - radius * 2},
+                         {x + width - radius * 2, y + height - radius * 2}};
+    for (int i = 0; i < 4; i++)
+        XFillArc(a->display, a->window, a->gc, corners[i][0], corners[i][1],
+                 (unsigned)(radius * 2), (unsigned)(radius * 2), 0, 360 * 64);
 }
 
 static void text(struct app *a, int x, int y, const char *value, XftFont *font,
@@ -145,7 +164,8 @@ static void list_directory(struct app *a) {
     a->entry_count = 0;
     struct dirent *item;
     while ((item = readdir(dir))) {
-        if (!strcmp(item->d_name, ".") || !strcmp(item->d_name, "..")) continue;
+        if (!strcmp(item->d_name, ".") || !strcmp(item->d_name, "..") ||
+            (!a->show_hidden && item->d_name[0] == '.')) continue;
         if (is_trash(a) && strstr(item->d_name, ".origin.json") &&
             strlen(item->d_name) >= strlen(".origin.json") &&
             !strcmp(item->d_name + strlen(item->d_name) - strlen(".origin.json"), ".origin.json"))
@@ -192,6 +212,22 @@ static void open_selected(struct app *a) {
     char path[PATH_MAX];
     if (!selected_path(a, path, sizeof path)) return;
     if (a->entries[a->selected].directory) { navigate(a, path); return; }
+    char *type = g_content_type_guess(path, NULL, 0, NULL);
+    bool text_file = type && g_content_type_is_a(type, "text/plain");
+    g_free(type);
+    if (!text_file) {
+        GFile *file = g_file_new_for_path(path);
+        char *uri = g_file_get_uri(file);
+        GError *error = NULL;
+        bool started = uri && g_app_info_launch_default_for_uri(uri, NULL, &error);
+        g_clear_error(&error);
+        g_free(uri);
+        g_object_unref(file);
+        if (!started) snprintf(a->notice, sizeof a->notice,
+                               "No application is registered for this file");
+        else a->notice[0] = 0;
+        return;
+    }
     pid_t pid = fork();
     if (pid < 0) { snprintf(a->notice, sizeof a->notice, "Could not open file"); return; }
     if (!pid) {
@@ -219,10 +255,12 @@ static void trash_selected(struct app *a) {
     char source[PATH_MAX], trash[PATH_MAX], destination[PATH_MAX], metadata[PATH_MAX];
     if (!selected_path(a, source, sizeof source) || is_trash(a) ||
         !path_join(trash, sizeof trash, a->home, ".local/share/heurism/trash")) return;
-    char share[PATH_MAX], heurism[PATH_MAX];
-    if (!path_join(share, sizeof share, a->home, ".local/share") ||
+    char local[PATH_MAX], share[PATH_MAX], heurism[PATH_MAX];
+    if (!path_join(local, sizeof local, a->home, ".local") ||
+        !path_join(share, sizeof share, local, "share") ||
         !path_join(heurism, sizeof heurism, share, "heurism") ||
-        !ensure_directory(share, 0700) || !ensure_directory(heurism, 0700) ||
+        !ensure_directory(local, 0700) || !ensure_directory(share, 0700) ||
+        !ensure_directory(heurism, 0700) ||
         !ensure_directory(trash, 0700)) goto failed;
     struct timespec now;
     clock_gettime(CLOCK_REALTIME, &now);
@@ -411,7 +449,11 @@ static void submit_prompt(struct app *a) {
         if (!strcmp(a->prompt_text, "yes")) trash_selected(a);
         break;
     case OPEN_PATH:
-        if (editor_path(a, target, sizeof target)) {
+        if (a->mode == FILES) {
+            if (a->prompt_text[0] == '/') navigate(a, a->prompt_text);
+            else if (path_join(target, sizeof target, a->directory, a->prompt_text))
+                navigate(a, target);
+        } else if (editor_path(a, target, sizeof target)) {
             if (a->dirty) snprintf(a->notice, sizeof a->notice, "Save this draft before opening another file");
             else set_file(a, target);
         }
@@ -434,15 +476,11 @@ static void add_button(struct app *a, const char *name, enum command command, in
 static void configure_buttons(struct app *a) {
     a->button_count = 0;
     if (a->mode == FILES) {
-        add_button(a, "Home", HOME, 68);
-        add_button(a, "Up", UP, 52);
-        add_button(a, "Open", OPEN, 68);
+        add_button(a, "Up", UP, 54);
         add_button(a, "New folder", CREATE, 110);
-        add_button(a, "Rename", CHANGE_NAME, 86);
-        add_button(a, "Trash", TRASH, 72);
-        add_button(a, "Trash bin", TRASH_BIN, 94);
-        add_button(a, "Restore", RESTORE, 84);
+        add_button(a, "Hidden", TOGGLE_HIDDEN, 82);
         add_button(a, "Refresh", REFRESH, 86);
+        add_button(a, "Go to location", LOCATION, 132);
     } else {
         add_button(a, "New", NEW, 70);
         add_button(a, "Open", OPEN, 74);
@@ -455,6 +493,13 @@ static void command(struct app *a, enum command action) {
     char path[PATH_MAX];
     switch (action) {
     case HOME: navigate(a, a->home); break;
+    case DOCUMENTS:
+    case DOWNLOADS:
+    case PICTURES:
+        if (path_join(path, sizeof path, a->home,
+                      action == DOCUMENTS ? "Documents" :
+                      action == DOWNLOADS ? "Downloads" : "Pictures")) navigate(a, path);
+        break;
     case UP:
         snprintf(path, sizeof path, "%s", a->directory);
         char *slash = strrchr(path, '/');
@@ -474,12 +519,19 @@ static void command(struct app *a, enum command action) {
         break;
     case RESTORE: restore_selected(a); break;
     case REFRESH: list_directory(a); break;
+    case TOGGLE_HIDDEN:
+        a->show_hidden = !a->show_hidden;
+        list_directory(a);
+        break;
+    case LOCATION: prompt_start(a, OPEN_PATH, a->directory); break;
     case TRASH_BIN:
         if (path_join(path, sizeof path, a->home, ".local/share/heurism/trash")) {
-            char share[PATH_MAX], heurism[PATH_MAX];
-            if (path_join(share, sizeof share, a->home, ".local/share") &&
+            char local[PATH_MAX], share[PATH_MAX], heurism[PATH_MAX];
+            if (path_join(local, sizeof local, a->home, ".local") &&
+                path_join(share, sizeof share, local, "share") &&
                 path_join(heurism, sizeof heurism, share, "heurism") &&
-                ensure_directory(share, 0700) && ensure_directory(heurism, 0700) &&
+                ensure_directory(local, 0700) && ensure_directory(share, 0700) &&
+                ensure_directory(heurism, 0700) &&
                 ensure_directory(path, 0700)) navigate(a, path);
         }
         break;
@@ -565,39 +617,146 @@ static void move_vertical(struct app *a, int delta) {
     ensure_cursor_visible(a);
 }
 
-static void render(struct app *a) {
-    box(a, 0, 0, a->width, a->height, 10, 19, 29);
-    box(a, 0, 0, a->width, 116, 19, 30, 43);
-    text(a, 24, 39, a->mode == FILES ? "Files" : "Editor", a->font, 240, 246, 255);
+static bool place_active(struct app *a, enum command action) {
+    char path[PATH_MAX];
+    if (action == HOME) return !strcmp(a->directory, a->home);
+    if (action == TRASH_BIN) return is_trash(a);
+    const char *name = action == DOCUMENTS ? "Documents" :
+                       action == DOWNLOADS ? "Downloads" : "Pictures";
+    return path_join(path, sizeof path, a->home, name) &&
+           !strcmp(a->directory, path);
+}
+
+static void entry_icon(struct app *a, int x, int y, bool directory) {
+    if (directory) {
+        box(a, x, y + 5, 23, 16, 60, 118, 163);
+        box(a, x + 2, y + 2, 10, 5, 91, 151, 193);
+    } else {
+        box(a, x + 3, y, 18, 23, 69, 102, 126);
+        box(a, x + 7, y + 6, 10, 2, 203, 223, 232);
+        box(a, x + 7, y + 11, 10, 2, 203, 223, 232);
+    }
+}
+
+static void render_files(struct app *a) {
+    box(a, 0, 0, a->width, a->height, 13, 22, 36);
+    box(a, 0, 0, a->width, 112, 25, 37, 54);
+    text(a, 24, 43, "Files", a->font_title, 240, 247, 250);
     for (int i = 0; i < a->button_count; i++) {
         struct button *button = &a->buttons[i];
-        box(a, button->x, 57, button->width, 42, 35, 55, 72);
+        bool selected = button->command == TOGGLE_HIDDEN && a->show_hidden;
+        round_box(a, button->x, 61, button->width, 41, 7,
+                  selected ? 58 : 38, selected ? 112 : 57, selected ? 120 : 76);
+        text(a, button->x + 10, 87, button->label, a->font_small, 231, 241, 247);
+    }
+    box(a, 0, 112, 207, a->height - 155, 20, 31, 47);
+    text(a, 26, 151, "PLACES", a->font_small, 138, 166, 184);
+    const struct { const char *name; enum command action; } places[] = {
+        {"Home", HOME}, {"Documents", DOCUMENTS}, {"Downloads", DOWNLOADS},
+        {"Pictures", PICTURES}, {"Trash", TRASH_BIN}
+    };
+    for (size_t i = 0; i < sizeof places / sizeof places[0]; i++) {
+        int y = 174 + (int)i * 44;
+        if (place_active(a, places[i].action))
+            round_box(a, 16, y, 175, 39, 7, 39, 76, 84);
+        box(a, 31, y + 15, 10, 10, 83, 182, 178);
+        text(a, 53, y + 26, places[i].name, a->font_small,
+             223, 236, 243);
+    }
+    box(a, 207, 112, 1, a->height - 155, 44, 62, 80);
+    const char *leaf = strrchr(a->directory, '/');
+    leaf = leaf && leaf[1] ? leaf + 1 : a->directory;
+    text(a, 230, 146, leaf, a->font_title, 239, 246, 250);
+    XRectangle path_clip = {230, 151, (unsigned short)(a->width - 255), 31};
+    XftDrawSetClipRectangles(a->draw, 0, 0, &path_clip, 1);
+    text(a, 230, 173, a->directory, a->font_small, 146, 171, 190);
+    XftDrawSetClip(a->draw, NULL);
+    box(a, 226, 185, a->width - 248, 1, 46, 64, 81);
+    int visible = (a->height - FILE_ROW_TOP - 105) / FILE_ROW_HEIGHT;
+    if (visible < 1) visible = 1;
+    if (!a->entry_count)
+        text(a, 272, 246, "This folder is empty", a->font_small, 146, 171, 190);
+    for (int row = 0; row < visible && row + a->scroll < a->entry_count; row++) {
+        int index = row + a->scroll;
+        int y = FILE_ROW_TOP + row * FILE_ROW_HEIGHT;
+        struct entry *entry = &a->entries[index];
+        round_box(a, 220, y, a->width - 236, FILE_ROW_HEIGHT - 2, 6,
+                  index == a->selected ? 37 : row % 2 ? 19 : 23,
+                  index == a->selected ? 75 : row % 2 ? 32 : 37,
+                  index == a->selected ? 86 : row % 2 ? 49 : 54);
+        entry_icon(a, 235, y + 8, entry->directory);
+        XRectangle name_clip = {270, (short)y, (unsigned short)(a->width - 435),
+                                FILE_ROW_HEIGHT};
+        XftDrawSetClipRectangles(a->draw, 0, 0, &name_clip, 1);
+        text(a, 272, y + 27, entry->name, a->font_small, 235, 243, 247);
+        XftDrawSetClip(a->draw, NULL);
+        char details[48];
+        if (entry->directory) snprintf(details, sizeof details, "Folder");
+        else if (entry->size >= 1048576)
+            snprintf(details, sizeof details, "%lld MiB", (long long)(entry->size / 1048576));
+        else if (entry->size >= 1024)
+            snprintf(details, sizeof details, "%lld KiB", (long long)(entry->size / 1024));
+        else snprintf(details, sizeof details, "%lld B", (long long)entry->size);
+        text(a, a->width - 144, y + 27, details, a->font_small, 146, 171, 190);
+    }
+    box(a, 208, a->height - 99, a->width - 208, 56, 25, 37, 54);
+    box(a, 208, a->height - 99, a->width - 208, 1, 49, 67, 83);
+    if (a->selected >= 0 && a->selected < a->entry_count) {
+        XRectangle selected_clip = {230, (short)(a->height - 94),
+                                    (unsigned short)(a->width - 590), 48};
+        XftDrawSetClipRectangles(a->draw, 0, 0, &selected_clip, 1);
+        text(a, 230, a->height - 65, a->entries[a->selected].name,
+             a->font_small, 231, 242, 247);
+        XftDrawSetClip(a->draw, NULL);
+        int actions_x = a->width - 342;
+        round_box(a, actions_x, a->height - 91, 76, 40, 7, 42, 68, 86);
+        text(a, actions_x + 15, a->height - 65, "Open", a->font_small,
+             236, 246, 249);
+        if (!is_trash(a)) {
+            round_box(a, actions_x + 84, a->height - 91, 90, 40, 7, 42, 68, 86);
+            text(a, actions_x + 96, a->height - 65, "Rename", a->font_small,
+                 236, 246, 249);
+        }
+        round_box(a, actions_x + 182, a->height - 91, 130, 40, 7, 42, 68, 86);
+        text(a, actions_x + 193, a->height - 65,
+             is_trash(a) ? "Restore" : "Move to Trash", a->font_small,
+             236, 246, 249);
+    } else text(a, 230, a->height - 66, "Select an item to open or manage it",
+                a->font_small, 146, 171, 190);
+    box(a, 0, a->height - 43, a->width, 43, 25, 37, 54);
+    if (a->prompt != NO_PROMPT) {
+        char line[PATH_MAX + 64];
+        const char *title = a->prompt == NEW_FOLDER ? "New folder" :
+                            a->prompt == RENAME ? "New name" :
+                            a->prompt == TRASH_CONFIRM ? "Type yes to move to Trash" :
+                            "Location";
+        snprintf(line, sizeof line, "%s: %s_", title, a->prompt_text);
+        text(a, 24, a->height - 15, line, a->font_small, 80, 225, 190);
+    } else if (a->notice[0])
+        text(a, 24, a->height - 15, a->notice, a->font_small, 80, 225, 190);
+    else {
+        char count[72];
+        snprintf(count, sizeof count, "%d item%s  ·  Ctrl+L location  ·  Ctrl+H hidden",
+                 a->entry_count, a->entry_count == 1 ? "" : "s");
+        text(a, 24, a->height - 15, count, a->font_small, 146, 171, 190);
+    }
+}
+
+static void render(struct app *a) {
+    if (a->mode == FILES) {
+        render_files(a);
+        XFlush(a->display);
+        return;
+    }
+    box(a, 0, 0, a->width, a->height, 10, 19, 29);
+    box(a, 0, 0, a->width, 116, 19, 30, 43);
+    text(a, 24, 39, "Editor", a->font_title, 240, 246, 255);
+    for (int i = 0; i < a->button_count; i++) {
+        struct button *button = &a->buttons[i];
+        round_box(a, button->x, 57, button->width, 42, 7, 35, 55, 72);
         text(a, button->x + 10, 84, button->label, a->font_small, 237, 246, 255);
     }
-    if (a->mode == FILES) {
-        char title[PATH_MAX + 16];
-        size_t home_length = strlen(a->home);
-        if (!strcmp(a->directory, a->home))
-            snprintf(title, sizeof title, "Location: Home");
-        else if (!strncmp(a->directory, a->home, home_length) &&
-                 a->directory[home_length] == '/')
-            snprintf(title, sizeof title, "Location: Home%s", a->directory + home_length);
-        else
-            snprintf(title, sizeof title, "Location: %s", a->directory);
-        text(a, 24, 143, title, a->font_small, 157, 176, 198);
-        int visible = (a->height - 205) / ROW_HEIGHT;
-        for (int row = 0; row < visible && row + a->scroll < a->entry_count; row++) {
-            int index = row + a->scroll, y = 161 + row * ROW_HEIGHT;
-            struct entry *entry = &a->entries[index];
-            if (index == a->selected) box(a, 18, y, a->width - 36, ROW_HEIGHT, 31, 83, 91);
-            char name[128], details[64];
-            snprintf(name, sizeof name, "%.100s", entry->name);
-            if (entry->directory) snprintf(details, sizeof details, "Folder");
-            else snprintf(details, sizeof details, "%lld B", (long long)entry->size);
-            text(a, 32, y + 23, name, a->font_small, 240, 246, 255);
-            text(a, a->width - 150, y + 23, details, a->font_small, 157, 176, 198);
-        }
-    } else {
+    {
         char name[PATH_MAX + 32];
         snprintf(name, sizeof name, "%s%s", a->file[0] ? a->file : "Untitled",
                  a->dirty ? "  ·  Unsaved" : "");
@@ -665,13 +824,21 @@ static void keypress(struct app *a, XKeyEvent *event) {
         return;
     }
     if (a->mode == FILES) {
-        if (symbol == XK_Return) open_selected(a);
+        if ((event->state & ControlMask) && (symbol == XK_h || symbol == XK_H))
+            command(a, TOGGLE_HIDDEN);
+        else if ((event->state & ControlMask) && (symbol == XK_l || symbol == XK_L))
+            command(a, LOCATION);
+        else if ((event->state & ControlMask) && (event->state & ShiftMask) &&
+                 (symbol == XK_n || symbol == XK_N)) command(a, CREATE);
+        else if ((event->state & Mod1Mask) && symbol == XK_Up) command(a, UP);
+        else if (symbol == XK_Return) open_selected(a);
         else if (symbol == XK_Up && a->selected > 0) a->selected--;
         else if (symbol == XK_Down && a->selected + 1 < a->entry_count) a->selected++;
         else if (symbol == XK_Delete) command(a, TRASH);
         else if (symbol == XK_F2) command(a, CHANGE_NAME);
         if (a->selected < a->scroll) a->scroll = a->selected;
-        int visible = (a->height - 205) / ROW_HEIGHT;
+        int visible = (a->height - FILE_ROW_TOP - 105) / FILE_ROW_HEIGHT;
+        if (visible < 1) visible = 1;
         if (a->selected >= a->scroll + visible) a->scroll = a->selected - visible + 1;
         if (a->scroll < 0) a->scroll = 0;
         return;
@@ -723,7 +890,8 @@ static void click(struct app *a, XButtonEvent *event) {
         return;
     }
     if (event->button != 1) return;
-    if (event->y >= 57 && event->y < 100) {
+    if (event->y >= (a->mode == FILES ? 61 : 57) &&
+        event->y < (a->mode == FILES ? 102 : 100)) {
         for (int i = 0; i < a->button_count; i++) {
             struct button *button = &a->buttons[i];
             if (event->x >= button->x && event->x < button->x + button->width) {
@@ -731,8 +899,29 @@ static void click(struct app *a, XButtonEvent *event) {
             }
         }
     }
-    if (a->mode == FILES && event->y >= 161 && event->y < a->height - 43) {
-        int index = a->scroll + (event->y - 161) / ROW_HEIGHT;
+    if (a->mode == FILES && event->x >= 16 && event->x < 191 &&
+        event->y >= 174 && event->y < 394) {
+        int place = (event->y - 174) / 44;
+        if ((event->y - 174) % 44 < 39) {
+            static const enum command actions[] =
+                {HOME, DOCUMENTS, DOWNLOADS, PICTURES, TRASH_BIN};
+            command(a, actions[place]);
+        }
+        return;
+    }
+    if (a->mode == FILES && a->selected >= 0 &&
+        event->y >= a->height - 91 && event->y < a->height - 51) {
+        int x = a->width - 342;
+        if (event->x >= x && event->x < x + 76) command(a, OPEN);
+        else if (!is_trash(a) && event->x >= x + 84 && event->x < x + 174)
+            command(a, CHANGE_NAME);
+        else if (event->x >= x + 182 && event->x < x + 312)
+            command(a, is_trash(a) ? RESTORE : TRASH);
+        return;
+    }
+    if (a->mode == FILES && event->x >= 220 &&
+        event->y >= FILE_ROW_TOP && event->y < a->height - 99) {
+        int index = a->scroll + (event->y - FILE_ROW_TOP) / FILE_ROW_HEIGHT;
         if (index >= 0 && index < a->entry_count) {
             bool double_click = a->selected == index && event->time - a->last_click < 350;
             a->selected = index;
@@ -752,6 +941,10 @@ static bool setup(struct app *a) {
     a->window = XCreateSimpleWindow(a->display, RootWindow(a->display, a->screen),
                                     180, 100, (unsigned)a->width, (unsigned)a->height,
                                     0, 0, 0);
+    XSizeHints size = {.flags = PMinSize,
+                       .min_width = a->mode == FILES ? 900 : 600,
+                       .min_height = 480};
+    XSetWMNormalHints(a->display, a->window, &size);
     XStoreName(a->display, a->window, a->mode == FILES ? "Heurism Files" : "Heurism Editor");
     XSelectInput(a->display, a->window, ExposureMask | ButtonPressMask |
                  KeyPressMask | StructureNotifyMask | FocusChangeMask);
@@ -762,7 +955,8 @@ static bool setup(struct app *a) {
                              DefaultColormap(a->display, a->screen));
     a->font = XftFontOpenName(a->display, a->screen, "DejaVu Sans Mono:size=14");
     a->font_small = XftFontOpenName(a->display, a->screen, "DejaVu Sans:size=11");
-    if (!a->draw || !a->font || !a->font_small) return false;
+    a->font_title = XftFontOpenName(a->display, a->screen, "DejaVu Sans:bold:size=18");
+    if (!a->draw || !a->font || !a->font_small || !a->font_title) return false;
     a->input_method = XOpenIM(a->display, NULL, NULL, NULL);
     if (a->input_method)
         a->input_context = XCreateIC(a->input_method, XNInputStyle,
@@ -775,7 +969,7 @@ static bool setup(struct app *a) {
 
 int main(int argc, char **argv) {
     if (argc == 2 && !strcmp(argv[1], "--version")) {
-        puts("Heurism Files/Editor 0.2 (C/X11/Xft)"); return 0;
+        puts("Heurism Files/Editor 0.3 (C/X11/Xft/GIO)"); return 0;
     }
     setlocale(LC_CTYPE, "");
     struct app a = {.selected = -1};

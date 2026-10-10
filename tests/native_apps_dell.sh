@@ -54,7 +54,7 @@ until files=$(DISPLAY=:2 xdotool search --name '^Heurism Files$' | tail -n 1) &&
     sleep 1
 done
 DISPLAY=:2 xdotool windowactivate --sync "$files"
-DISPLAY=:2 xdotool mousemove --window "$files" 280 78 click 1
+DISPLAY=:2 xdotool key --window "$files" ctrl+shift+n
 DISPLAY=:2 xdotool type --clearmodifiers --window "$files" created
 DISPLAY=:2 xdotool key --window "$files" Return
 sleep 1

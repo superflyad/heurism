@@ -6,6 +6,8 @@ X11_CFLAGS = $(shell $(PKG_CONFIG) --cflags x11 xft)
 X11_LIBS = $(shell $(PKG_CONFIG) --libs x11 xft)
 DESKTOP_CFLAGS = $(X11_CFLAGS) $(shell $(PKG_CONFIG) --cflags gio-2.0)
 DESKTOP_LIBS = $(X11_LIBS) $(shell $(PKG_CONFIG) --libs gio-2.0)
+APP_CFLAGS = $(X11_CFLAGS) $(shell $(PKG_CONFIG) --cflags gio-2.0)
+APP_LIBS = $(X11_LIBS) $(shell $(PKG_CONFIG) --libs gio-2.0)
 TERMINAL_CFLAGS = $(X11_CFLAGS) $(shell $(PKG_CONFIG) --cflags vterm)
 TERMINAL_LIBS = $(X11_LIBS) $(shell $(PKG_CONFIG) --libs vterm) -lutil
 CONTROL_CFLAGS = $(shell $(PKG_CONFIG) --cflags json-c)
@@ -30,7 +32,7 @@ heurism-desktop: heurism-desktop.c
 	$(CC) $(STRICT_CFLAGS) $(CFLAGS) $(DESKTOP_CFLAGS) $(CONTROL_CFLAGS) -o $@ $< $(DESKTOP_LIBS) $(CONTROL_LIBS)
 
 heurism-app: heurism-app.c
-	$(CC) $(STRICT_CFLAGS) $(CFLAGS) $(X11_CFLAGS) $(CONTROL_CFLAGS) -o $@ $< $(X11_LIBS) $(CONTROL_LIBS)
+	$(CC) $(STRICT_CFLAGS) $(CFLAGS) $(APP_CFLAGS) $(CONTROL_CFLAGS) -o $@ $< $(APP_LIBS) $(CONTROL_LIBS)
 
 heurism-session-config: heurism-session-config.c
 	$(CC) $(STRICT_CFLAGS) $(CFLAGS) $(CONTROL_CFLAGS) -o $@ $< $(CONTROL_LIBS)

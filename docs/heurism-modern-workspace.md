@@ -57,3 +57,39 @@ and this exact Dell release has not been rebooted. The earlier firmware-logo
 halt required physical power cycling, so no remote Dell reboot was attempted.
 The shared X11 UID-1000 session and unencrypted root disk still limit
 application isolation and data-at-rest security.
+
+## Files follow-up, 2026-10-10
+
+The C Files window now uses a places sidebar, a quiet location header,
+file rows with size information, contextual Open/Rename/Trash actions, and a
+status footer. Hidden files are off by default and Ctrl+H toggles them;
+Ctrl+L edits the location. Ctrl+Shift+N creates a folder and Alt+Up visits
+the parent. Text files open the C Editor, while other files use the user's
+registered GIO application. Trash now creates the complete private directory
+chain even for a new home directory.
+
+The isolated VM interaction test created and renamed a folder, moved it to
+Trash and restored it, opened a PNG through a test MIME association, opened a
+text file in the C Editor, toggled hidden files and navigated by keyboard.
+The sealed VM release is
+`/opt/heurism/native/releases/heurism-os-20261010T162519Z-41556`; checked
+reboot returned fresh boot `9691a9e4-e34b-405f-90e7-e60479cd5205` and
+release health. Checkpoint `Heurism-Files-v03-20261010T1631` has UUID
+`92097266-4e82-404a-a57b-3f2da2dddc56`.
+
+The Dell-only assembler repeated the isolated C app and release gates. Its
+guarded activation selected
+`/opt/heurism/native/releases/heurism-os-dell-20261010T162805Z-22599`
+on the existing boot `edb102d9-25c6-409c-aa17-181fea3eaf41`. Live UI,
+root SSH, watch, control, release verification and protected hashes passed.
+`BootCurrent` and `BootOrder` remained `0005` and `0005,0000`. Temporary
+build packages were removed on both machines. The physical Dell was not
+rebooted for this presentation change.
+
+The next visual work should focus on fast keyboard and pointer search across
+apps, windows, settings and local files; reliable window placement and
+workspace switching; and consistent touch-sized controls in Editor and
+Settings. These are specific usability gaps in the current build. Any
+contextual assistance should be optional and show exactly what it reads or
+changes. The shared X11 session and unencrypted disk still require separate
+security work before treating installed apps as isolated.
