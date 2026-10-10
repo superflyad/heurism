@@ -247,3 +247,42 @@ release remain unverified.
 Editor still lacks text selection, clipboard editing, find and replace, and
 large-document indexing. Settings, notifications, accessibility and the X11
 security boundary remain open desktop work.
+
+## C Spaces view 0.8, 2026-10-10
+
+The panel's Spaces label and Super+O now open a borderless workspace view. It
+shows four space cards with window counts, approximate window positions and
+clickable window titles. Selecting a window changes to its space and focuses
+it. Number keys, arrows, Enter and Escape provide keyboard navigation. Small
+occupancy dots in the panel indicate which spaces contain windows. The view
+fits between the panel and dock at 1280×800 and is centered at 1920×1080.
+Window previews are drawn from X11 geometry and titles; they are not live
+window images. The current Xfwm configuration has four spaces.
+
+The isolated VM test on `:95` moved a C terminal to Space 2, opened the view,
+selected that window from Space 1 and verified focus and workspace state. It
+also checked Super+O and keyboard selection. The full VM assembly gate and
+existing launcher/search/quick-control regression test passed. Rendered
+1280×800 and Dell-sized 1920×1080 evidence is
+`build/prime-vm/spaces-with-window.png` and
+`build/prime-vm/heurism-dell-spaces.png`. The final VM release is
+`/opt/heurism/native/releases/heurism-os-20261010T174158Z-10289`; checked
+reboot returned `fa45e0c4-2d36-4888-8516-6f44e24f9c17` with SSH, watch,
+control, UI and release verification healthy. The intentional VM lock screen
+painted after pointer wake. Checkpoint `Heurism-Spaces-view-final-20261010`
+has UUID `de9edacf-a4d3-461c-8f35-f56c5583e916`.
+
+The Dell-only gate tested the same interaction in isolated Xvfb `:93` at
+1920×1080 without changing the live display. It passed the broader shell,
+control, hardware, app and sealed-release gates. Guarded activation selected
+`/opt/heurism/native/releases/heurism-os-dell-20261010T174526Z-9213` on the
+existing boot `edb102d9-25c6-409c-aa17-181fea3eaf41`. Live release/UI,
+SSH, watch, control, eight protected hashes, `BootCurrent` 0005,
+`BootOrder` 0005,0000, `DriverOrder` 0000,0001 and absent BootNext passed.
+Build packages were removed. The Dell was not rebooted or physically viewed;
+physical touch acceptance and post-reboot persistence of this release remain
+unverified.
+
+The space view makes open work visible, but the desktop still needs better
+window tiling, a shared app visual system, selection/clipboard in Editor,
+accessibility controls and a coherent lock screen.

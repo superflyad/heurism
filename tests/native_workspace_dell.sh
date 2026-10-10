@@ -103,6 +103,26 @@ xprop -root _NET_CURRENT_DESKTOP | grep -q ' = 1$'
 xdotool key --clearmodifiers super+1
 sleep 1
 xprop -root _NET_CURRENT_DESKTOP | grep -q ' = 0$'
+xdotool mousemove 190 24 click 1
+sleep 1
+spaces=$(xdotool search --name '^Heurism Spaces$' | tail -n 1)
+test -n "$spaces"
+xprop -id "$spaces" _NET_WM_STATE | grep -q '_NET_WM_STATE_SKIP_TASKBAR'
+xwd -root -silent -out /var/lib/companion/native-stage/evidence/heurism-dell-spaces.xwd
+xdotool mousemove --window "$spaces" 865 230 click 1
+sleep 1
+xprop -root _NET_CURRENT_DESKTOP | grep -q ' = 1$'
+test "$(xdotool getactivewindow)" = "$terminal"
+xdotool key --clearmodifiers super+1
+sleep 1
+xdotool key --clearmodifiers super+o
+sleep 1
+spaces=$(xdotool search --name '^Heurism Spaces$' | tail -n 1)
+test -n "$spaces"
+xdotool windowactivate --sync "$spaces"
+xdotool key Escape
+sleep 1
+if xdotool search --name '^Heurism Spaces$' >/dev/null 2>&1; then exit 1; fi
 xdotool mousemove 1000 1028 click 1
 sleep 1
 xprop -root _NET_CURRENT_DESKTOP | grep -q ' = 1$'
@@ -126,4 +146,4 @@ rc-service heurism-desktop status >/dev/null
 rc-service heurism-control status >/dev/null
 rc-service companion-watch status >/dev/null
 rc-service sshd status >/dev/null
-echo 'Dell-size isolated C four-workspace switching, window move, quick controls, local file search and terminal passed; :0 unchanged'
+echo 'Dell-size isolated C Spaces view, four-workspace switching, window move, quick controls, local file search and terminal passed; :0 unchanged'

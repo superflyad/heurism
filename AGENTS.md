@@ -1,5 +1,22 @@
 # Current product direction
 
+On 2026-10-10 C desktop 0.8 added a Spaces view with four visual workspace
+cards, window counts and approximate geometry, clickable cross-space window
+activation, panel occupancy dots, Super+O and keyboard navigation. The VM
+isolated interaction and full release gates passed; the active VM release is
+`/opt/heurism/native/releases/heurism-os-20261010T174158Z-10289` on fresh
+boot `fa45e0c4-2d36-4888-8516-6f44e24f9c17`. Checkpoint
+`Heurism-Spaces-view-final-20261010` has UUID
+`de9edacf-a4d3-461c-8f35-f56c5583e916`. The Dell isolated 1920×1080
+workspace and complete Dell assembly gates passed. The guarded active Dell
+release is `/opt/heurism/native/releases/heurism-os-dell-20261010T174526Z-9213`
+on unchanged boot `edb102d9-25c6-409c-aa17-181fea3eaf41`, with root
+SSH/watch/control/UI, eight protected hashes and default SSD boot orders
+healthy. No Dell reboot or physical display acceptance was performed. Build
+packages were removed. The desktop is still interim: window tiling, shared C
+app styling, Editor selection/clipboard, accessibility and the lock-screen
+experience need work. See `docs/heurism-modern-workspace.md`.
+
 On 2026-10-10 the C Editor gained numbered rows, visible pointer-placed
 caret, horizontal scrolling, UTF-8 column movement, bounded undo/redo and
 per-process locked drafts with inactive-draft recovery and legacy migration.

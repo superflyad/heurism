@@ -32,7 +32,7 @@
 #define MAX_LOCAL_SCANNED 2048
 
 enum page { WORKSPACE, MENU, OVERVIEW, SETTINGS, DEVICE, NETWORK, SOUND };
-enum action { NONE, SHOW_WORKSPACE, SHOW_MENU, SHOW_OVERVIEW, SHOW_SETTINGS,
+enum action { NONE, SHOW_WORKSPACE, SHOW_MENU, SHOW_SPACES, SHOW_OVERVIEW, SHOW_SETTINGS,
               SHOW_DEVICE, SHOW_NETWORK, SHOW_SOUND, SHOW_POWER, SHOW_QUICK,
               LOCK_DESKTOP, LAUNCH_FILES, LAUNCH_EDITOR, LAUNCH_INSTALLED,
               OPEN_LOCAL,
@@ -44,7 +44,7 @@ enum action { NONE, SHOW_WORKSPACE, SHOW_MENU, SHOW_OVERVIEW, SHOW_SETTINGS,
               SOUND_LEFT_UP, SOUND_LEFT_DOWN, SOUND_RIGHT_UP, SOUND_RIGHT_DOWN,
               SOUND_MUTE, BIOS_SELECT, BIOS_NEXT, BIOS_APPLY };
 struct hit { Window window; int x, y, width, height; enum action action; int index; };
-struct task { Window window; char title[64]; };
+struct task { Window window; char title[64]; unsigned workspace; int x, y, width, height; };
 struct local_item {
     char name[NAME_MAX + 1], detail[128], path[PATH_MAX];
     time_t modified;
@@ -52,7 +52,7 @@ struct local_item {
 };
 struct desktop {
     Display *display;
-    int screen, width, height, dock_x, dock_y, dock_width;
+    int screen, width, height, screen_width, screen_height, dock_x, dock_y, dock_width;
     Window background, dock, panel;
     Visual *visual;
     GC gc;
@@ -84,6 +84,8 @@ struct desktop {
     bool power_mode;
     bool launcher_mode;
     bool quick_mode;
+    bool spaces_mode;
+    unsigned spaces_selected;
     char launcher_query[64];
     int launcher_selected, launcher_offset;
     GList *installed_apps;
@@ -102,6 +104,7 @@ static const struct launcher_item launcher_items[] = {
     {"Browser", "Open the web", LAUNCH_BROWSER},
     {"Terminal", "Run commands", LAUNCH_TERMINAL},
     {"Settings", "Appearance and input", SHOW_SETTINGS},
+    {"Spaces", "See open windows and workspaces", SHOW_SPACES},
     {"System", "Machine and services", SHOW_OVERVIEW},
     {"Network", "Connection status", SHOW_NETWORK},
     {"Keyboard", "On-screen input", LAUNCH_KEYBOARD},
@@ -237,6 +240,7 @@ static void rounded(struct desktop *d, Window window, int x, int y, int width, i
 static void label(struct desktop *d, Window window, int x, int y, XftFont *font,
                   const char *text, unsigned red, unsigned green, unsigned blue) {
     bool light_page = d->light && !d->launcher_mode && !d->quick_mode &&
+                      !d->spaces_mode &&
                       window == d->background &&
                       (d->settings_mode || d->page != WORKSPACE);
     if (light_page && red == 239 && green == 245 && blue == 255) {
@@ -488,6 +492,20 @@ static void refresh_tasks(struct desktop *d) {
             struct task *task = &d->tasks[d->task_count++];
             task->window = window;
             snprintf(task->title, sizeof task->title, "%.20s", title);
+            unsigned long workspace = d->current_workspace;
+            cardinal_property(d, window, d->window_workspace_atom, &workspace);
+            task->workspace = (unsigned)workspace;
+            XWindowAttributes attributes;
+            if (XGetWindowAttributes(d->display, window, &attributes)) {
+                Window child;
+                task->x = attributes.x;
+                task->y = attributes.y;
+                XTranslateCoordinates(d->display, window,
+                    RootWindow(d->display, d->screen), 0, 0,
+                    &task->x, &task->y, &child);
+                task->width = attributes.width;
+                task->height = attributes.height;
+            } else task->x = task->y = task->width = task->height = 0;
             XFree(title);
         }
     }
@@ -569,7 +587,9 @@ static void render_panel(struct desktop *d) {
     label(d, d->panel, 59, 32, d->font_body, "Heurism", 237, 244, 249);
     fill(d, d->panel, 159, 15, 1, 20, 75, 91, 107);
     label(d, d->panel, 176, 32, d->font_small, "Spaces", 165, 183, 201);
+    label(d, d->panel, 224, 31, d->font_small, "▾", 165, 183, 201);
     hit(d, d->panel, 12, 0, 147, 48, SHOW_MENU, 0);
+    hit(d, d->panel, 164, 0, 76, 48, SHOW_SPACES, 0);
     for (unsigned i = 0; i < d->workspace_count; i++) {
         int x = 244 + (int)i * 43;
         bool active = i == d->current_workspace;
@@ -578,8 +598,16 @@ static void render_panel(struct desktop *d) {
         char number[3];
         snprintf(number, sizeof number, "%u", i + 1);
         label(d, d->panel, x + 18 - label_width(d, d->font_small, number) / 2,
-              31, d->font_small, number,
+              27, d->font_small, number,
               active ? 12 : 196, active ? 32 : 212, active ? 45 : 224);
+        int occupied = 0;
+        for (int task = 0; task < d->task_count; task++)
+            if (d->tasks[task].workspace == i ||
+                d->tasks[task].workspace == UINT32_MAX) occupied++;
+        if (occupied > 3) occupied = 3;
+        for (int dot = 0; dot < occupied; dot++)
+            fill(d, d->panel, x + 13 + dot * 6, 32, 3, 3,
+                 active ? 12 : 111, active ? 32 : 139, active ? 45 : 164);
         hit(d, d->panel, x, 3, 36, 42, SWITCH_WORKSPACE, (int)i);
     }
     time_t now = time(NULL);
@@ -631,6 +659,95 @@ static void render_workspace(struct desktop *d) {
     fill(d, d->background, cx - 72, cy - 42, 12, 128, 75, 219, 194);
     fill(d, d->background, cx + 50, cy - 77, 12, 128, 75, 219, 194);
     fill(d, d->background, cx - 72, cy + 7, 134, 12, 75, 219, 194);
+}
+
+static void render_spaces(struct desktop *d) {
+    fill(d, d->background, 0, 0, d->width, d->height, 12, 22, 36);
+    fill(d, d->background, 0, 0, d->width, 4, 75, 219, 194);
+    label(d, d->background, 36, 48, d->font_small, "H E U R I S M  /  WORKSPACE",
+          101, 220, 204);
+    label(d, d->background, 36, 103, d->font_large, "Spaces", 239, 245, 255);
+    label(d, d->background, 280, 102, d->font_body,
+          "Choose a space or open a window", 162, 183, 202);
+    int margin = 36, gap = 18, top = 145;
+    int card_width = (d->width - 2 * margin - gap) / 2;
+    int card_height = (d->height - top - 48 - gap) / 2;
+    unsigned visible = d->workspace_count < 4 ? d->workspace_count : 4;
+    for (unsigned space = 0; space < visible; space++) {
+        int x = margin + (int)(space % 2) * (card_width + gap);
+        int y = top + (int)(space / 2) * (card_height + gap);
+        bool active = space == d->current_workspace;
+        bool selected = space == d->spaces_selected;
+        rounded(d, d->background, x, y, card_width, card_height, 12,
+                selected ? 51 : 30, selected ? 75 : 46, selected ? 91 : 65);
+        if (active) fill(d, d->background, x + 16, y + 17, 4, 26, 75, 219, 194);
+        char heading[32], summary[40];
+        snprintf(heading, sizeof heading, "Space %u", space + 1);
+        label(d, d->background, x + 30, y + 38, d->font_body,
+              heading, 239, 245, 255);
+        int count = 0;
+        for (int task = 0; task < d->task_count; task++)
+            if (d->tasks[task].workspace == space ||
+                d->tasks[task].workspace == UINT32_MAX) count++;
+        snprintf(summary, sizeof summary, "%d window%s%s", count,
+                 count == 1 ? "" : "s", active ? "  ·  current" : "");
+        label(d, d->background, x + 30, y + 62, d->font_small,
+              summary, 169, 191, 208);
+        hit(d, d->background, x, y, card_width, card_height,
+            SWITCH_WORKSPACE, (int)space);
+        int map_x = x + 20, map_y = y + 82;
+        int map_width = (card_width - 54) * 55 / 100;
+        int map_height = card_height - 105;
+        rounded(d, d->background, map_x, map_y, map_width, map_height, 6,
+                14, 29, 48);
+        int listed = 0;
+        for (int task = 0; task < d->task_count; task++) {
+            struct task *item = &d->tasks[task];
+            if (item->workspace != space && item->workspace != UINT32_MAX) continue;
+            if (item->width > 0 && item->height > 0) {
+                int window_x = item->x < 0 ? 0 : item->x > d->screen_width ?
+                               d->screen_width : item->x;
+                int window_y = item->y < 0 ? 0 : item->y > d->screen_height ?
+                               d->screen_height : item->y;
+                int window_width = item->width > d->screen_width ?
+                                   d->screen_width : item->width;
+                int window_height = item->height > d->screen_height ?
+                                    d->screen_height : item->height;
+                int preview_x = map_x + window_x * map_width / d->screen_width;
+                int preview_y = map_y + window_y * map_height / d->screen_height;
+                int preview_width = window_width * map_width / d->screen_width;
+                int preview_height = window_height * map_height / d->screen_height;
+                if (preview_x < map_x + 2) preview_x = map_x + 2;
+                if (preview_y < map_y + 2) preview_y = map_y + 2;
+                if (preview_width < 28) preview_width = 28;
+                if (preview_height < 20) preview_height = 20;
+                if (preview_x + preview_width > map_x + map_width - 2)
+                    preview_width = map_x + map_width - 2 - preview_x;
+                if (preview_y + preview_height > map_y + map_height - 2)
+                    preview_height = map_y + map_height - 2 - preview_y;
+                rounded(d, d->background, preview_x, preview_y,
+                        preview_width, preview_height, 3, 68, 102, 123);
+                fill(d, d->background, preview_x + 3, preview_y + 3,
+                     preview_width - 6, 3, 112, 195, 190);
+            }
+            if (listed < 4) {
+                int list_x = map_x + map_width + 16;
+                int list_y = map_y + listed * 33;
+                rounded(d, d->background, list_x, list_y,
+                        x + card_width - 18 - list_x, 29, 5, 41, 62, 80);
+                label(d, d->background, list_x + 9, list_y + 20,
+                      d->font_small, item->title, 227, 239, 245);
+                hit(d, d->background, list_x, list_y,
+                    x + card_width - 18 - list_x, 29, SWITCH_TASK, task);
+                listed++;
+            }
+        }
+        if (!count)
+            label(d, d->background, map_x + map_width + 15, map_y + 23,
+                  d->font_small, "Ready for work", 140, 163, 182);
+    }
+    label(d, d->background, 36, d->height - 19, d->font_small,
+          "Super+1-4 switch directly   ·   Esc closes", 145, 171, 190);
 }
 
 static const char *bios_name(int index) {
@@ -797,6 +914,7 @@ static void render_quick(struct desktop *d) {
 }
 
 static void render_page(struct desktop *d) {
+    if (d->spaces_mode) { render_spaces(d); return; }
     if (d->launcher_mode) { render_launcher(d); return; }
     if (d->quick_mode) { render_quick(d); return; }
     if (d->page == WORKSPACE && !d->settings_mode && !d->power_mode) {
@@ -1030,7 +1148,7 @@ static void publish_health(struct desktop *d) {
     json_object_object_add(record, "uid", json_object_new_int((int)getuid()));
     json_object_object_add(record, "release", json_object_new_string(executable));
     json_object_object_add(record, "boot_id", json_object_new_string(d->boot_id));
-    json_object_object_add(record, "version", json_object_new_string("native-0.7"));
+    json_object_object_add(record, "version", json_object_new_string("native-0.8"));
     const char *pages[] = {"workspace", "menu", "overview", "settings", "device", "network", "sound"};
     _Static_assert(sizeof pages / sizeof pages[0] == SOUND + 1,
                    "every desktop page needs a health name");
@@ -1193,6 +1311,13 @@ static void open_panel(struct desktop *d, const char *selection_name, const char
 }
 
 static void run_action(struct desktop *d, enum action action, int index) {
+    if (d->spaces_mode) {
+        if (action == SWITCH_WORKSPACE) switch_workspace(d, index);
+        else if (action == SWITCH_TASK) activate_task(d, index);
+        else if (action != SHOW_WORKSPACE) return;
+        XCloseDisplay(d->display);
+        exit(0);
+    }
     if (d->quick_mode) {
         if (action == SHOW_WORKSPACE) { XCloseDisplay(d->display); exit(0); }
         const char *argument = action == SHOW_SETTINGS ? "--settings" :
@@ -1226,6 +1351,7 @@ static void run_action(struct desktop *d, enum action action, int index) {
         }
         case OPEN_LOCAL: open_local(d, index); break;
         case SHOW_SETTINGS: launch_self(d, "--settings"); break;
+        case SHOW_SPACES: launch_self(d, "--spaces"); break;
         case SHOW_OVERVIEW: launch_self(d, "--overview"); break;
         case SHOW_NETWORK: launch_self(d, "--network"); break;
         case SHOW_POWER: launch_self(d, "--power"); break;
@@ -1248,6 +1374,7 @@ static void run_action(struct desktop *d, enum action action, int index) {
         if (d->settings_mode) d->page = MENU;
         else open_panel(d, "_HEURISM_LAUNCHER", "--launcher");
         break;
+    case SHOW_SPACES: open_panel(d, "_HEURISM_SPACES", "--spaces"); break;
     case SHOW_QUICK: open_panel(d, "_HEURISM_QUICK_PANEL", "--quick"); break;
     case SHOW_OVERVIEW: d->page = OVERVIEW; break;
     case SHOW_SETTINGS: d->page = SETTINGS; break;
@@ -1486,6 +1613,18 @@ static void install_launcher_shortcut(struct desktop *d) {
         }
         XSync(d->display, False);
     }
+    KeyCode overview = XKeysymToKeycode(d->display, XK_o);
+    if (overview) {
+        unsigned variants[] = {0, LockMask, numlock, LockMask | numlock};
+        for (size_t i = 0; i < sizeof variants / sizeof variants[0]; i++) {
+            bool duplicate = false;
+            for (size_t j = 0; j < i; j++)
+                if (variants[i] == variants[j]) duplicate = true;
+            if (!duplicate)
+                XGrabKey(d->display, overview, Mod4Mask | variants[i], root, False,
+                         GrabModeAsync, GrabModeAsync);
+        }
+    }
     KeySym spaces[] = {XK_1, XK_2, XK_3, XK_4};
     unsigned extras[] = {0, LockMask, numlock, LockMask | numlock};
     for (size_t i = 0; i < sizeof spaces / sizeof spaces[0]; i++) {
@@ -1517,8 +1656,15 @@ static bool setup_x(struct desktop *d) {
     d->width = DisplayWidth(d->display, d->screen);
     d->height = DisplayHeight(d->display, d->screen);
     int screen_width = d->width, screen_height = d->height;
+    d->screen_width = screen_width;
+    d->screen_height = screen_height;
     if (d->settings_mode) {
-        if (d->quick_mode) {
+        if (d->spaces_mode) {
+            if (d->width > 1100) d->width = 1100;
+            if (d->height > 700) d->height = 700;
+            if (d->width > screen_width - 40) d->width = screen_width - 40;
+            if (d->height > screen_height - 174) d->height = screen_height - 174;
+        } else if (d->quick_mode) {
             if (d->width > 520) d->width = 520;
             if (d->height > 540) d->height = 540;
             if (d->width > screen_width - 40) d->width = screen_width - 40;
@@ -1556,6 +1702,8 @@ static bool setup_x(struct desktop *d) {
     Window root = RootWindow(d->display, d->screen);
     int window_x = d->settings_mode ? (screen_width - d->width) / 2 : 0;
     int window_y = d->settings_mode ? (screen_height - d->height) / 2 : 0;
+    if (d->spaces_mode)
+        window_y = 48 + (screen_height - 48 - 94 - d->height) / 2;
     if (d->quick_mode) {
         window_x = screen_width - d->width - 24;
         window_y = screen_height - d->height - 94;
@@ -1578,6 +1726,7 @@ static bool setup_x(struct desktop *d) {
     d->panel = XCreateSimpleWindow(d->display, root, 0, 0,
                                     (unsigned)d->width, 48, 0, 0, 0);
     XStoreName(d->display, d->background,
+               d->spaces_mode ? "Heurism Spaces" :
                d->launcher_mode ? "Heurism Launcher" :
                d->quick_mode ? "Heurism Quick Controls" :
                d->power_mode ? "Heurism Power" :
@@ -1590,7 +1739,7 @@ static bool setup_x(struct desktop *d) {
         set_window_type(d, d->background, d->desktop_atom);
         set_window_type(d, d->dock, d->dock_atom);
         set_window_type(d, d->panel, d->dock_atom);
-    } else if (d->launcher_mode || d->quick_mode) {
+    } else if (d->launcher_mode || d->quick_mode || d->spaces_mode) {
         XChangeProperty(d->display, d->background, d->state_atom, XA_ATOM, 32,
                         PropModeReplace, (unsigned char *)&d->skip_taskbar_atom, 1);
         set_borderless(d, d->background);
@@ -1624,9 +1773,10 @@ static bool setup_x(struct desktop *d) {
         XMapRaised(d->display, d->panel);
     }
     XSync(d->display, False);
-    if (d->launcher_mode || d->quick_mode) {
+    if (d->launcher_mode || d->quick_mode || d->spaces_mode) {
         Atom selection = XInternAtom(d->display,
-            d->launcher_mode ? "_HEURISM_LAUNCHER" : "_HEURISM_QUICK_PANEL", False);
+            d->launcher_mode ? "_HEURISM_LAUNCHER" :
+            d->spaces_mode ? "_HEURISM_SPACES" : "_HEURISM_QUICK_PANEL", False);
         XSetSelectionOwner(d->display, selection, d->background, CurrentTime);
         activate_window(d, d->background);
         XFlush(d->display);
@@ -1679,7 +1829,7 @@ static int show_home(void) {
 int main(int argc, char **argv) {
     setlocale(LC_ALL, "");
     if (argc == 2 && !strcmp(argv[1], "--version")) {
-        puts("Heurism desktop 0.7 (C/X11/Xft)"); return 0;
+        puts("Heurism desktop 0.8 (C/X11/Xft)"); return 0;
     }
     if (argc == 2 && !strcmp(argv[1], "--home")) return show_home();
     struct desktop d = {.page = WORKSPACE, .control_socket = DEFAULT_SOCKET,
@@ -1691,6 +1841,9 @@ int main(int argc, char **argv) {
         d.settings_mode = true;
         d.launcher_mode = true;
         d.page = MENU;
+    } else if (argc == 2 && !strcmp(argv[1], "--spaces")) {
+        d.settings_mode = true;
+        d.spaces_mode = true;
     } else if (argc == 2 && !strcmp(argv[1], "--quick")) {
         d.settings_mode = true;
         d.quick_mode = true;
@@ -1705,7 +1858,7 @@ int main(int argc, char **argv) {
         d.power_mode = true;
         d.page = MENU;
     } else if (argc == 3 && !strcmp(argv[1], "--socket")) d.control_socket = argv[2];
-    else if (argc != 1) return fprintf(stderr, "usage: heurism-desktop [--settings|--launcher|--quick|--overview|--network|--power|--socket path]\n"), 2;
+    else if (argc != 1) return fprintf(stderr, "usage: heurism-desktop [--settings|--launcher|--spaces|--quick|--overview|--network|--power|--socket path]\n"), 2;
     signal(SIGCHLD, SIG_IGN);
     if (!setup_x(&d)) return fprintf(stderr, "heurism-desktop: X display unavailable\n"), 1;
     if (d.launcher_mode) {
@@ -1716,6 +1869,7 @@ int main(int argc, char **argv) {
     refresh_status(&d);
     refresh_page(&d);
     refresh_workspaces(&d);
+    d.spaces_selected = d.current_workspace;
     refresh_tasks(&d);
     if (!d.settings_mode) ensure_visible(&d);
     redraw(&d);
@@ -1745,12 +1899,33 @@ int main(int argc, char **argv) {
                         run_action(&d, SHOW_MENU, 0);
                         continue;
                     }
+                    if (key == XK_o) {
+                        run_action(&d, SHOW_SPACES, 0);
+                        continue;
+                    }
                     if (key >= XK_1 && key <= XK_4) {
                         run_action(&d, event.xkey.state & ShiftMask ?
                                    MOVE_WINDOW_WORKSPACE : SWITCH_WORKSPACE,
                                    (int)(key - XK_1));
                         continue;
                     }
+                }
+                if (d.spaces_mode) {
+                    if (key == XK_Escape) run_action(&d, SHOW_WORKSPACE, 0);
+                    else if (key >= XK_1 && key <= XK_4 &&
+                             (unsigned)(key - XK_1) < d.workspace_count)
+                        run_action(&d, SWITCH_WORKSPACE, (int)(key - XK_1));
+                    else if (key == XK_Left || key == XK_Up) {
+                        if (d.spaces_selected > 0) d.spaces_selected--;
+                        redraw(&d);
+                    } else if (key == XK_Right || key == XK_Down || key == XK_Tab) {
+                        if (d.spaces_selected + 1 < d.workspace_count &&
+                            d.spaces_selected + 1 < 4) d.spaces_selected++;
+                        else d.spaces_selected = 0;
+                        redraw(&d);
+                    } else if (key == XK_Return || key == XK_KP_Enter)
+                        run_action(&d, SWITCH_WORKSPACE, (int)d.spaces_selected);
+                    continue;
                 }
                 if (d.launcher_mode) {
                     int count = launcher_count(&d);

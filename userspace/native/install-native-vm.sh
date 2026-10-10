@@ -24,6 +24,7 @@ if [ "${1:-}" = assemble ]; then
         command -v "$program" >/dev/null
     done
     sh "$stage/native_xfce_bridge.sh" "$stage/heurism-desktop"
+    sh "$stage/native_spaces_vm.sh" "$stage/heurism-desktop"
     sh "$stage/native_shell.sh" "$stage/heurism-sh"
     sh "$stage/native_shell_interactive.sh" "$stage/heurism-sh"
     sh "$stage/native_shell_jobs.sh" "$stage/heurism-sh"
