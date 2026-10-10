@@ -20,18 +20,27 @@ test ! -e "$stage/guest.raw"
 root="$stage/root"
 mkdir -p "$root"
 truncate -s 24G "$stage/guest.raw"
-parted -s "$stage/guest.raw" mklabel gpt mkpart ESP fat32 1MiB 513MiB set 1 esp on mkpart root ext4 513MiB 100%
+parted -s "$stage/guest.raw" mklabel gpt \
+    mkpart ESP fat32 1MiB 513MiB set 1 esp on \
+    mkpart root-a ext4 513MiB 8705MiB \
+    mkpart root-b ext4 8705MiB 16897MiB \
+    mkpart data ext4 16897MiB 100%
 loop=$(losetup --find --show --partscan "$stage/guest.raw")
+root_b="$stage/root-b"
 cleanup() {
-    for path in dev proc sys boot/efi ''; do
+    mountpoint -q "$root_b/boot/efi" && umount "$root_b/boot/efi" || true
+    mountpoint -q "$root_b" && umount "$root_b" || true
+    for path in dev proc sys boot/efi var/lib/companion ''; do
         mountpoint -q "$root/$path" && umount "$root/$path" || true
     done
     losetup -d "$loop" || true
 }
 trap cleanup EXIT
-test -b "${loop}p1" && test -b "${loop}p2"
+test -b "${loop}p1" && test -b "${loop}p2" && test -b "${loop}p3" && test -b "${loop}p4"
 mkfs.vfat -F 32 -n HEURISM "${loop}p1"
-mkfs.ext4 -q -L heurism-root "${loop}p2"
+mkfs.ext4 -q -L heurism-a "${loop}p2"
+mkfs.ext4 -q -L heurism-b "${loop}p3"
+mkfs.ext4 -q -L heurism-data "${loop}p4"
 mount "${loop}p2" "$root"
 base=alpine-minirootfs-3.24.2-x86_64.tar.gz
 url=https://dl-cdn.alpinelinux.org/alpine/v3.24/releases/x86_64/$base
@@ -39,7 +48,9 @@ curl -fL --retry 3 "$url" -o "$stage/$base"
 curl -fL --retry 3 "$url.sha256" -o "$stage/$base.sha256"
 (cd "$stage" && sha256sum -c "$base.sha256")
 tar -xzf "$stage/$base" -C "$root"
-mkdir -p "$root"/{dev,proc,sys,boot/efi,etc/companion,var/lib/companion/desktop-stage/evidence}
+mkdir -p "$root"/{dev,proc,sys,boot/efi,etc/companion,var/lib/companion}
+mount "${loop}p4" "$root/var/lib/companion"
+mkdir -p "$root/var/lib/companion/desktop-stage/evidence"
 mount "${loop}p1" "$root/boot/efi"
 mount -t proc proc "$root/proc"
 mount -t sysfs sysfs "$root/sys"
@@ -77,8 +88,11 @@ iface eth0 inet static
     gateway 172.28.50.1
 EOF
 uuid=$(blkid -s UUID -o value "${loop}p2")
+uuid_b=$(blkid -s UUID -o value "${loop}p3")
+data_uuid=$(blkid -s UUID -o value "${loop}p4")
 esp_uuid=$(blkid -s UUID -o value "${loop}p1")
-printf 'UUID=%s / ext4 defaults 0 1\nUUID=%s /boot/efi vfat defaults,umask=0077 0 2\n' "$uuid" "$esp_uuid" > "$root/etc/fstab"
+printf 'UUID=%s / ext4 defaults 0 1\nUUID=%s /var/lib/companion ext4 defaults 0 2\nUUID=%s /boot/efi vfat defaults,umask=0077 0 2\n' "$uuid" "$data_uuid" "$esp_uuid" > "$root/etc/fstab"
+printf 'A\n' > "$root/etc/heurism/slot"
 printf 'hv_vmbus\nhv_storvsc\nhv_netvsc\nhyperv_keyboard\nhid_hyperv\nhyperv_fb\n' > "$root/etc/modules"
 printf 'blacklist hyperv_drm\n' > "$root/etc/modprobe.d/companion-hyperv.conf"
 mkdir -p "$root/etc/mkinitfs/features.d"
@@ -88,15 +102,30 @@ version=$(basename "$root"/lib/modules/*-lts)
 chroot "$root" mkinitfs "$version"
 mkdir -p "$root/boot/grub"
 cat > "$root/boot/grub/grub.cfg" <<EOF
+search --no-floppy --fs-uuid --set=bootroot $uuid
+load_env -f (\$bootroot)/boot/grub/grubenv
+if [ -n "\$next_entry" ]; then
+    set default="\$next_entry"
+    set next_entry=
+    save_env -f (\$bootroot)/boot/grub/grubenv next_entry
+else
+    set default=0
+fi
 set timeout_style=hidden
 set timeout=1
-set default=0
-menuentry "Heurism" {
+menuentry "Heurism A" {
     search --no-floppy --fs-uuid --set=root $uuid
     linux /boot/vmlinuz-lts root=UUID=$uuid rootfstype=ext4 ro quiet video=hyperv_fb:1280x800
     initrd /boot/initramfs-lts
 }
+menuentry "Heurism B" {
+    search --no-floppy --fs-uuid --set=root $uuid_b
+    linux /boot/vmlinuz-lts root=UUID=$uuid_b rootfstype=ext4 ro quiet panic=15 video=hyperv_fb:1280x800
+    initrd /boot/initramfs-lts
+}
 EOF
+chroot "$root" grub-editenv /boot/grub/grubenv create
+chroot "$root" grub-script-check /boot/grub/grub.cfg
 chroot "$root" grub-install --target=x86_64-efi --efi-directory=/boot/efi --boot-directory=/boot --removable --no-nvram
 mkdir -p "$root/root/.ssh"
 install -m 600 "$stage/client.pub" "$root/root/.ssh/authorized_keys"
@@ -150,8 +179,20 @@ for service in networking sshd dbus companion-watch heurism-control heurism-desk
     chroot "$root" rc-update add "$service" default
 done
 for service in mount-ro killprocs savecache; do chroot "$root" rc-update add "$service" shutdown; done
-chroot "$root" sh -c 'sha256sum /boot/vmlinuz-lts /boot/initramfs-lts /boot/grub/grub.cfg /boot/efi/EFI/BOOT/BOOTX64.EFI /etc/fstab /etc/network/interfaces /etc/ssh/sshd_config /etc/ssh/ssh_host_ed25519_key.pub /etc/init.d/sshd /etc/init.d/companion-watch /etc/init.d/heurism-control /etc/init.d/heurism-desktop /usr/local/sbin/companion-vm-watch /usr/share/heurism/wallpaper.svg /etc/companion/platform.json /etc/heurism/desktop-lock /etc/os-release /etc/heurism/upstream-release /etc/heurism/packages.installed /etc/heurism/build-provenance > /etc/companion/vm-protected.sha256'
+protected_paths='/boot/vmlinuz-lts /boot/initramfs-lts /boot/grub/grub.cfg /boot/efi/EFI/BOOT/BOOTX64.EFI /etc/fstab /etc/heurism/slot /etc/network/interfaces /etc/ssh/sshd_config /etc/ssh/ssh_host_ed25519_key.pub /etc/init.d/sshd /etc/init.d/companion-watch /etc/init.d/heurism-control /etc/init.d/heurism-desktop /usr/local/sbin/companion-vm-watch /usr/share/heurism/wallpaper.svg /etc/companion/platform.json /etc/heurism/desktop-lock /etc/os-release /etc/heurism/upstream-release /etc/heurism/packages.installed /etc/heurism/build-provenance'
+chroot "$root" sh -c "sha256sum $protected_paths > /etc/companion/vm-protected.sha256"
 chmod 644 "$root/etc/companion/vm-protected.sha256"
+mkdir -p "$root_b"
+mount "${loop}p3" "$root_b"
+rsync -aHAX --numeric-ids --one-file-system "$root/" "$root_b/"
+test -d "$root_b/var/lib/companion" && test ! -e "$root_b/var/lib/companion/desktop-user"
+printf 'UUID=%s / ext4 defaults 0 1\nUUID=%s /var/lib/companion ext4 defaults 0 2\nUUID=%s /boot/efi vfat defaults,umask=0077 0 2\n' "$uuid_b" "$data_uuid" "$esp_uuid" > "$root_b/etc/fstab"
+printf 'B\n' > "$root_b/etc/heurism/slot"
+mount "${loop}p1" "$root_b/boot/efi"
+chroot "$root_b" sh -c "sha256sum $protected_paths > /etc/companion/vm-protected.sha256"
+chroot "$root_b" sha256sum -c /etc/companion/vm-protected.sha256
+chroot "$root_b" /opt/heurism/native/current/heurism-release verify
+chroot "$root" sha256sum -c /etc/companion/vm-protected.sha256
 sync
 cleanup
 trap - EXIT

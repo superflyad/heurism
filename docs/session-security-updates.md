@@ -82,6 +82,8 @@ Xfce health passed; the locker reported active. The candidate was powered
 off and `CompanionDev` returned with its original pinned SSH identity on
 fresh boot `bd7ea378-cc13-416c-aab6-aafb7dbd9739`.
 
-This image is a local candidate. It still embeds a host-specific SSH
-authorized key, has a single ext4 root, and lacks a pinned package snapshot.
-It is not a distributable installer or a Dell migration image.
+That image was a local candidate with a single ext4 root. A later fresh image
+has a separate A/B root and persistent data partition, with a live one-time
+boot and fatal-startup fallback test described in [A/B updates](ab-updates.md).
+It still embeds a host-specific SSH authorized key and lacks a pinned package
+snapshot. It is not a distributable installer or a Dell migration image.

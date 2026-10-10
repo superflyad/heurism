@@ -1,5 +1,20 @@
 # Current product direction
 
+On 2026-10-09 local / 2026-10-10 UTC, the fresh VM image builder gained a
+four-partition A/B layout with shared `/var/lib/companion` data. The isolated
+`HeurismCandidate` VM booted A, one-time B, then A, preserving the same data
+marker and passing release/management health. A deliberate fatal B init in
+that disposable VM returned to healthy A without a second host reset;
+B's original init was restored. Candidate VHDX SHA256 is
+`1e7f1235bbe9b0374cf5f60e126367642e1be6ed5a4602759a73ddd4117dda5b`.
+`CompanionDev` resumed its original pinned SSH identity on fresh boot
+`c8cfc619-4ca4-4889-b285-f8590445490c`; its current installed disk is
+still the earlier single-root layout. The Dell was untouched and remains
+single-root. This is a VM boot prototype, not a full updater: A anchors GRUB,
+and staging, health promotion, hang watchdog, shared-data migrations and
+independent physical recovery remain. See `docs/ab-updates.md`. Do not
+repartition or change the Dell boot path unattended.
+
 On 2026-10-09 the owner asked to close session-security and whole-system
 update/rollback gaps. The Dell root console's empty password was replaced
 with a random local password; `companion-ui` received a separate random PAM

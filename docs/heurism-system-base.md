@@ -6,8 +6,10 @@ manager, base Unix tools and many applications. Xfce is the established desktop
 session until Heurism has an equally usable alternative. The active Heurism
 shell, terminal, controls, settings and release verifier are C programs.
 
-The fresh VM image now has unique local account passwords and a locked Xfce
-session; `CompanionDev` has a host-checkpoint system upgrade/rollback path.
+The fresh VM image now has unique local account passwords, a locked Xfce
+session and a VM-tested A/B root plus persistent data layout. `CompanionDev`
+has a separate host-checkpoint system upgrade/rollback path. See the
+[A/B boot test](ab-updates.md) for its exact scope.
 The Dell still has a single ext4 root and no independent full-OS rollback.
 Current evidence and the physical migration gate are in
 [session security and updates](session-security-updates.md). The older image
@@ -28,7 +30,7 @@ packages, the Xfce session or the image build process Heurism-native by itself.
 
 ## Build ownership
 
-`platform/heurism/vm-packages.list` selects 46 direct packages for the next
+`platform/heurism/vm-packages.list` selects 47 direct packages for the next
 Hyper-V VM image. `tools/prime-vm.py` stages the package profile, C runtime
 source, system identity and wallpaper. `tools/build-hyperv-guest.sh` verifies
 staged hashes and package names before using `apk`. It starts from the pinned
