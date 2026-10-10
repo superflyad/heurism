@@ -44,11 +44,33 @@ restart, versus 615 MiB on the old long-running boot. These are different
 uptimes and cache states, so they show cleanup behavior, not a controlled
 speed or memory benchmark. Temporary compiler packages were removed.
 
+## Dell deployment, 2026-10-09
+
+The VM-tested look and C session cleanup were assembled and activated through
+the guarded Dell installer as sealed release
+`/opt/heurism/native/releases/heurism-os-dell-20261010T002244Z-12355`.
+The Dell's existing shell and terminal binaries were hash-matched and retained;
+only the tested look, session, menu and release-verifier sources were staged.
+Host and Dell hashes of all nine staged inputs matched. The installer passed
+isolated Xfce windows, applications, C Settings and Power, shell and interactive
+shell, native control, Files, Editor, release verification and a deliberately
+corrupted clone rejection before activation. It kept the previous working
+release available for rollback.
+
+The live 1920×1080 Dell capture at
+`build/desktop/dell-heurism-look-20261009.png` shows the H mark, wallpaper,
+menu, panel and dock. The release verifier and C health endpoint passed with
+UID 1000 Xfce running. SSH, watch, control and desktop services stayed up;
+Ethernet, AC power, sound and input preferences remained present. The checked
+power endpoint and protected SSD/NVRAM verification passed. The boot ID stayed
+`9668135f-ca95-4be3-a0d9-78a6fc9a78a7`: this was a desktop-service
+activation, not an OS reboot. Dell restart persistence has not been tested for
+this release. The remote-power guard remains active because a prior Dell
+restart stalled at its firmware logo without an independent recovery path.
+
 This is the first workspace pass. Application windows and much of the icon
 set still use Xfce themes. The next visual work is a consistent Heurism
 window, notification, launcher and settings language, tested against file,
 browser, terminal, touch and accessibility tasks. Measure fresh boot-to-ready,
 idle memory, app launch and responsiveness on identical VM configurations
-before claiming a performance gain. The Dell has not received this release;
-its remote-power guard remains active because firmware-logo recovery is not
-independent.
+before claiming a performance gain.

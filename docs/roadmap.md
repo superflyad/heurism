@@ -10,7 +10,7 @@ proving ground. See [architecture](architecture.md),
 | Area | Current state | Next useful acceptance |
 | --- | --- | --- |
 | System base | Heurism identity on VM and Dell; fresh C-first Hyper-V candidate booted and passed first paint, fallback, reboot and shutdown gates; Alpine 3.24.2 package source retained | Provision per-install SSH keys, pin a package source, and prove whole-system update and rollback without losing management |
-| Daily desktop | Xfce behavior with a sealed Heurism wallpaper, mark, panel and dock visual pass proven in the VM | Give windows, launchers, notifications and settings one Heurism style; complete ordinary Dell tasks with human input |
+| Daily desktop | Xfce behavior with a sealed Heurism wallpaper, mark, panel and dock visual pass proven in the VM and deployed live on the Dell without an OS reboot | Give windows, launchers, notifications and settings one Heurism style; complete ordinary Dell tasks with human input |
 | Shell | C command runner with editing, history, pipes, redirection and basic globbing; foreground/background process groups, Ctrl+Z, jobs, fg and bg pass real VM PTY checks | Verify after VM reboot, then expand completion and POSIX behavior; keep BusyBox ash for system scripts |
 | Terminal | C X11/Xft/libvterm PTY; bounded scrollback passed a live Dell test before its reboot. Pinned SSH later returned on a healthy fresh boot; the outage cause is unknown. Text selection, clipboard, title cue, clean window close and a tested CJK font fallback pass in the development VM. | Promote VM-tested changes with a physical recovery path; test broad Unicode and wide-character alignment, wrapped-line selection and accessibility in the VM |
 | Platform controls | C local socket checks hardware, BIOS, sound, input and guarded power | Keep controls usable across restart and cold boot; test physical input and audio quality |
@@ -26,4 +26,4 @@ the SSD boot order, protected files, authenticated SSH/watch and legacy
 recovery while iterating. Optional native kernel and USB/network drivers stay
 isolated research, not deployment gates. See [independent control](independent-control.md)
 for the missing preboot recovery layer and [workspace visual pass](heurism-look.md)
-for the current VM result.
+for the VM and Dell deployment evidence.

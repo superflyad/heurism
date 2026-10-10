@@ -1,7 +1,7 @@
 # Current product direction
 
 On 2026-10-09 the owner requested a Heurism look and performance unlike the
-stock Alpine/Xfce desktop. A VM-only sealed visual release
+stock Alpine/Xfce desktop. A sealed VM visual release
 `/opt/heurism/native/releases/heurism-os-20261009T235647Z-205314` now includes
 the H mark, vector wallpaper, branded application menu, navy panel, dark dock
 and clean workspace. Checked C reboot returned fresh VM boot
@@ -14,8 +14,14 @@ was 524 MiB at first measurement, 532 MiB after restart. The old long-running
 VM had 34 user D-Bus daemons and 615 MiB used; this is not a controlled memory
 benchmark. Temporary VM compiler packages were removed. Prechange VM
 checkpoint `Heurism-look-baseline-20261009` UUID
-`496118fc-a694-4f32-9650-d68b4cb49f69`. The Dell has not received this
-release and its remote-power guard remains active. See `docs/heurism-look.md`.
+`496118fc-a694-4f32-9650-d68b4cb49f69`. The same look and C session cleanup
+were then installed on the Dell through the guarded installer as sealed release
+`/opt/heurism/native/releases/heurism-os-dell-20261010T002244Z-12355`.
+Dell sidecar tests, C release verification, live 1920x1080 screen capture,
+SSH/watch/control/desktop status, checked power service and protected SSD/NVRAM
+verification passed on boot `9668135f-ca95-4be3-a0d9-78a6fc9a78a7`.
+No Dell OS reboot occurred, so Dell restart persistence for this release is
+unverified. The remote-power guard remains active. See `docs/heurism-look.md`.
 
 On 2026-10-09 the owner physically found the Dell stalled at its logo after
 the checked C restart, with the laptop throttling. Powering it off and on
