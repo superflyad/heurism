@@ -45,7 +45,7 @@ until DISPLAY=:2 xprop -root _NET_SUPPORTING_WM_CHECK 2>/dev/null | grep -q 'win
     sleep 1
 done
 su -s /bin/sh -c "printf start >$workspace/seed.txt" companion-ui
-su -s /bin/sh -c "DISPLAY=:2 HOME=/var/lib/companion/desktop-user exec $directory/heurism-files $workspace" companion-ui \
+su -s /bin/sh -c "DISPLAY=:2 HOME=$workspace exec $directory/heurism-files $workspace" companion-ui \
     >"$directory/files.log" 2>&1 &
 attempt=0
 until files=$(DISPLAY=:2 xdotool search --name '^Heurism Files$' | tail -n 1) && [ -n "$files" ]; do
@@ -59,7 +59,7 @@ DISPLAY=:2 xdotool type --clearmodifiers --window "$files" created
 DISPLAY=:2 xdotool key --window "$files" Return
 sleep 1
 test -d "$workspace/created"
-su -s /bin/sh -c "DISPLAY=:2 HOME=/var/lib/companion/desktop-user exec $directory/heurism-editor $workspace/seed.txt" companion-ui \
+su -s /bin/sh -c "DISPLAY=:2 HOME=$workspace exec $directory/heurism-editor $workspace/seed.txt" companion-ui \
     >"$directory/editor.log" 2>&1 &
 attempt=0
 until editor=$(DISPLAY=:2 xdotool search --name '^Heurism Editor$' | tail -n 1) && [ -n "$editor" ]; do
@@ -72,5 +72,18 @@ DISPLAY=:2 xdotool type --clearmodifiers --window "$editor" 'native '
 DISPLAY=:2 xdotool key --window "$editor" ctrl+s
 sleep 1
 test "$(cat "$workspace/seed.txt")" = 'native start'
+DISPLAY=:2 xdotool key --window "$editor" ctrl+z
+DISPLAY=:2 xdotool key --window "$editor" ctrl+s
+sleep 1
+test "$(cat "$workspace/seed.txt")" = 'nativestart'
+DISPLAY=:2 xdotool key --window "$editor" ctrl+y
+DISPLAY=:2 xdotool key --window "$editor" ctrl+s
+sleep 1
+test "$(cat "$workspace/seed.txt")" = 'native start'
+DISPLAY=:2 xdotool mousemove --window "$editor" 300 212 click 1
+DISPLAY=:2 xdotool type --clearmodifiers --window "$editor" '!'
+DISPLAY=:2 xdotool key --window "$editor" ctrl+s
+sleep 1
+test "$(cat "$workspace/seed.txt")" = 'native start!'
 test "$(stat -c %u "$workspace/seed.txt")" = 1000
-echo 'Dell native Files and Editor checks passed'
+echo 'Dell native Files and Editor pointer, undo, redo and save checks passed'

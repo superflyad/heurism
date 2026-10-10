@@ -17,15 +17,18 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/file.h>
 #include <sys/stat.h>
 #include <time.h>
 #include <unistd.h>
 
 #define MAX_FILE (4 * 1024 * 1024)
 #define MAX_ENTRIES 2000
-#define ROW_HEIGHT 32
 #define FILE_ROW_HEIGHT 42
 #define FILE_ROW_TOP 198
+#define EDITOR_ROW_HEIGHT 30
+#define EDITOR_ROW_TOP 198
+#define MAX_UNDO 128
 
 enum mode { FILES, EDITOR };
 enum prompt { NO_PROMPT, NEW_FOLDER, RENAME, TRASH_CONFIRM, OPEN_PATH, SAVE_PATH };
@@ -34,6 +37,11 @@ enum command { HOME, UP, OPEN, CREATE, CHANGE_NAME, TRASH, RESTORE, REFRESH,
                LOCATION, NEW, SAVE, SAVE_AS };
 struct entry { char name[NAME_MAX + 1]; bool directory; off_t size; };
 struct button { int x, width; enum command command; const char *label; };
+struct edit {
+    size_t start, removed_len, inserted_len, cursor_before;
+    char *removed, *inserted;
+    time_t when;
+};
 struct app {
     Display *display;
     Window window;
@@ -48,14 +56,18 @@ struct app {
     enum mode mode;
     enum prompt prompt;
     char home[PATH_MAX], directory[PATH_MAX], file[PATH_MAX], draft[PATH_MAX];
+    char draft_lock_path[PATH_MAX];
+    int draft_lock;
     char prompt_text[PATH_MAX], notice[256];
     struct entry entries[MAX_ENTRIES];
     int entry_count, selected, scroll;
     struct button buttons[12];
     int button_count;
     char *text;
-    size_t length, cursor;
-    int scroll_line;
+    size_t length, capacity, cursor;
+    int scroll_line, scroll_column;
+    struct edit undo[MAX_UNDO];
+    int undo_count, undo_position;
     bool dirty;
     bool show_hidden;
     time_t last_draft;
@@ -327,6 +339,17 @@ failed:
     snprintf(a->notice, sizeof a->notice, "Original location unavailable or occupied");
 }
 
+static void free_edit(struct edit *edit) {
+    free(edit->removed);
+    free(edit->inserted);
+    memset(edit, 0, sizeof *edit);
+}
+
+static void clear_undo(struct app *a) {
+    for (int i = 0; i < a->undo_count; i++) free_edit(&a->undo[i]);
+    a->undo_count = a->undo_position = 0;
+}
+
 static bool set_file(struct app *a, const char *path) {
     struct stat info;
     if (stat(path, &info) || !S_ISREG(info.st_mode) || info.st_size > MAX_FILE || info.st_size < 0) {
@@ -337,62 +360,186 @@ static bool set_file(struct app *a, const char *path) {
     char *buffer = malloc((size_t)info.st_size + 1);
     if (!buffer) { fclose(file); return false; }
     size_t length = fread(buffer, 1, (size_t)info.st_size, file);
-    bool good = !ferror(file) && length == (size_t)info.st_size && !memchr(buffer, 0, length);
+    bool good = !ferror(file) && length == (size_t)info.st_size &&
+                !memchr(buffer, 0, length) && g_utf8_validate(buffer, (gssize)length, NULL);
     fclose(file);
     if (!good) { free(buffer); snprintf(a->notice, sizeof a->notice, "Not a UTF-8 text file"); return false; }
     buffer[length] = 0;
     free(a->text);
     a->text = buffer;
     a->length = length;
+    a->capacity = length + 1;
     a->cursor = 0;
-    a->scroll_line = 0;
+    a->scroll_line = a->scroll_column = 0;
+    clear_undo(a);
     a->dirty = false;
     snprintf(a->file, sizeof a->file, "%s", path);
     a->notice[0] = 0;
     return true;
 }
 
-static void save_draft(struct app *a) {
-    if (!a->dirty || !a->text || !a->draft[0]) return;
+static int open_draft_lock(const char *draft, bool fresh, char *lock_path,
+                           size_t lock_size) {
+    if (snprintf(lock_path, lock_size, "%s.lock", draft) >= (int)lock_size) return -1;
+    int flags = O_RDWR | O_CREAT | O_CLOEXEC | O_NOFOLLOW;
+    if (fresh) flags |= O_EXCL;
+    int fd = open(lock_path, flags, 0600);
+    if (fd < 0) return -1;
+    struct stat info;
+    if (fstat(fd, &info) || !S_ISREG(info.st_mode) || info.st_uid != getuid() ||
+        (info.st_mode & 077) || flock(fd, LOCK_EX | LOCK_NB)) {
+        close(fd);
+        if (fresh) unlink(lock_path);
+        return -1;
+    }
+    return fd;
+}
+
+static bool new_draft(struct app *a, const char *directory) {
+    for (int attempt = 0; attempt < 8; attempt++) {
+        struct timespec now;
+        clock_gettime(CLOCK_REALTIME, &now);
+        char name[96], path[PATH_MAX], lock_path[PATH_MAX];
+        snprintf(name, sizeof name, "draft-%ld-%ld-%d.json",
+                 (long)getpid(), now.tv_nsec, attempt);
+        if (!path_join(path, sizeof path, directory, name)) return false;
+        int fd = open_draft_lock(path, true, lock_path, sizeof lock_path);
+        if (fd < 0) continue;
+        snprintf(a->draft, sizeof a->draft, "%s", path);
+        snprintf(a->draft_lock_path, sizeof a->draft_lock_path, "%s", lock_path);
+        a->draft_lock = fd;
+        return true;
+    }
+    return false;
+}
+
+static bool save_draft(struct app *a) {
+    if (!a->dirty || !a->text || !a->draft[0] || a->draft_lock < 0) return false;
     struct json_object *record = json_object_new_object();
     json_object_object_add(record, "path", a->file[0] ? json_object_new_string(a->file) : NULL);
     json_object_object_add(record, "text", json_object_new_string_len(a->text, (int)a->length));
     const char *data = json_object_to_json_string_ext(record, JSON_C_TO_STRING_PLAIN);
-    if (!atomic_file(a->draft, data, strlen(data)))
+    bool saved = atomic_file(a->draft, data, strlen(data));
+    if (!saved)
         snprintf(a->notice, sizeof a->notice, "Draft could not be saved");
     json_object_put(record);
+    return saved;
 }
 
-static void load_draft(struct app *a) {
+static bool load_draft(struct app *a) {
     FILE *file = fopen(a->draft, "rb");
-    if (!file) return;
+    if (!file) return false;
     struct stat info;
     if (stat(a->draft, &info) || info.st_size < 0 || info.st_size > MAX_FILE * 2 + 128) {
-        fclose(file); return;
+        fclose(file); return false;
     }
     char *data = malloc((size_t)info.st_size + 1);
-    if (!data) { fclose(file); return; }
+    if (!data) { fclose(file); return false; }
     size_t length = fread(data, 1, (size_t)info.st_size, file);
+    bool complete = !ferror(file) && length == (size_t)info.st_size;
     fclose(file);
+    if (!complete) { free(data); return false; }
     data[length] = 0;
     struct json_object *record = json_tokener_parse(data);
     free(data);
-    if (!record) return;
+    if (!record) return false;
+    bool recovered = false;
     struct json_object *content = NULL, *path = NULL;
     if (json_object_object_get_ex(record, "text", &content) &&
         json_object_get_type(content) == json_type_string &&
-        json_object_get_string_len(content) <= MAX_FILE) {
-        free(a->text);
-        a->length = (size_t)json_object_get_string_len(content);
-        a->text = strdup(json_object_get_string(content));
-        a->cursor = a->length;
-        a->dirty = true;
-        if (json_object_object_get_ex(record, "path", &path) &&
-            path && json_object_get_type(path) == json_type_string)
-            snprintf(a->file, sizeof a->file, "%s", json_object_get_string(path));
-        snprintf(a->notice, sizeof a->notice, "Recovered unsaved draft");
+        json_object_get_string_len(content) <= MAX_FILE &&
+        !memchr(json_object_get_string(content), 0,
+                (size_t)json_object_get_string_len(content)) &&
+        g_utf8_validate(json_object_get_string(content),
+                        json_object_get_string_len(content), NULL)) {
+        char *restored = strdup(json_object_get_string(content));
+        if (restored) {
+            free(a->text);
+            a->length = (size_t)json_object_get_string_len(content);
+            a->text = restored;
+            a->capacity = a->length + 1;
+            a->cursor = a->length;
+            clear_undo(a);
+            a->dirty = true;
+            a->file[0] = 0;
+            if (json_object_object_get_ex(record, "path", &path) &&
+                path && json_object_get_type(path) == json_type_string)
+                snprintf(a->file, sizeof a->file, "%s", json_object_get_string(path));
+            snprintf(a->notice, sizeof a->notice, "Recovered unsaved draft");
+            recovered = true;
+        }
     }
     json_object_put(record);
+    return recovered;
+}
+
+static bool recover_draft(struct app *a, const char *directory) {
+    DIR *stream = opendir(directory);
+    if (!stream) return false;
+    struct timespec newest = {0};
+    char chosen[PATH_MAX] = "", chosen_lock[PATH_MAX] = "";
+    int chosen_fd = -1;
+    struct dirent *entry;
+    while ((entry = readdir(stream))) {
+        size_t length = strlen(entry->d_name);
+        if (length < 12 || strncmp(entry->d_name, "draft-", 6) ||
+            strcmp(entry->d_name + length - 5, ".json")) continue;
+        char path[PATH_MAX], lock_path[PATH_MAX];
+        struct stat info;
+        if (!path_join(path, sizeof path, directory, entry->d_name) ||
+            lstat(path, &info) || !S_ISREG(info.st_mode) ||
+            info.st_uid != getuid() || (info.st_mode & 077) ||
+            (chosen_fd >= 0 &&
+             (info.st_mtim.tv_sec < newest.tv_sec ||
+              (info.st_mtim.tv_sec == newest.tv_sec &&
+               info.st_mtim.tv_nsec <= newest.tv_nsec)))) continue;
+        int fd = open_draft_lock(path, false, lock_path, sizeof lock_path);
+        if (fd < 0) continue;
+        snprintf(a->draft, sizeof a->draft, "%s", path);
+        if (!load_draft(a)) { close(fd); continue; }
+        if (chosen_fd >= 0) close(chosen_fd);
+        chosen_fd = fd;
+        newest = info.st_mtim;
+        snprintf(chosen, sizeof chosen, "%s", path);
+        snprintf(chosen_lock, sizeof chosen_lock, "%s", lock_path);
+    }
+    closedir(stream);
+    if (chosen_fd < 0) { a->draft[0] = 0; return false; }
+    a->draft_lock = chosen_fd;
+    snprintf(a->draft, sizeof a->draft, "%s", chosen);
+    snprintf(a->draft_lock_path, sizeof a->draft_lock_path, "%s", chosen_lock);
+    return true;
+}
+
+static void prepare_draft(struct app *a, bool restore) {
+    char local[PATH_MAX], state[PATH_MAX], heurism[PATH_MAX], drafts[PATH_MAX];
+    if (!path_join(local, sizeof local, a->home, ".local") ||
+        !path_join(state, sizeof state, local, "state") ||
+        !path_join(heurism, sizeof heurism, state, "heurism") ||
+        !path_join(drafts, sizeof drafts, heurism, "drafts") ||
+        !ensure_directory(local, 0700) || !ensure_directory(state, 0700) ||
+        !ensure_directory(heurism, 0700) || !ensure_directory(drafts, 0700)) {
+        snprintf(a->notice, sizeof a->notice, "Draft autosave unavailable");
+        return;
+    }
+    if (restore && recover_draft(a, drafts)) return;
+    if (!new_draft(a, drafts)) {
+        snprintf(a->notice, sizeof a->notice, "Draft autosave unavailable");
+        return;
+    }
+    if (restore) {
+        char legacy[PATH_MAX], current[PATH_MAX];
+        struct stat info;
+        if (path_join(legacy, sizeof legacy, heurism, "native-editor-draft.json") &&
+            !lstat(legacy, &info) && S_ISREG(info.st_mode) &&
+            info.st_uid == getuid() && !(info.st_mode & 077)) {
+            snprintf(current, sizeof current, "%s", a->draft);
+            snprintf(a->draft, sizeof a->draft, "%s", legacy);
+            bool loaded = load_draft(a);
+            snprintf(a->draft, sizeof a->draft, "%s", current);
+            if (loaded && save_draft(a)) unlink(legacy);
+        }
+    }
 }
 
 static bool save_editor(struct app *a, const char *destination, bool new_path) {
@@ -406,6 +553,7 @@ static bool save_editor(struct app *a, const char *destination, bool new_path) {
     }
     if (destination != a->file) snprintf(a->file, sizeof a->file, "%s", destination);
     a->dirty = false;
+    if (a->undo_count) a->undo[a->undo_count - 1].when = 0;
     unlink(a->draft);
     snprintf(a->notice, sizeof a->notice, "Saved");
     return true;
@@ -537,7 +685,12 @@ static void command(struct app *a, enum command action) {
         break;
     case NEW:
         if (a->dirty) snprintf(a->notice, sizeof a->notice, "Save this draft before creating another document");
-        else { a->length = a->cursor = 0; a->text[0] = 0; a->file[0] = 0; a->scroll_line = 0; }
+        else {
+            a->length = a->cursor = 0;
+            a->text[0] = a->file[0] = 0;
+            a->scroll_line = a->scroll_column = 0;
+            clear_undo(a);
+        }
         break;
     case SAVE:
         if (a->file[0]) save_editor(a, a->file, false);
@@ -561,24 +714,113 @@ static size_t next_character(const char *buffer, size_t length, size_t offset) {
     return offset;
 }
 
-static void insert_text(struct app *a, const char *bytes, size_t count) {
-    if (a->length + count > MAX_FILE) { snprintf(a->notice, sizeof a->notice, "Document size limit reached"); return; }
-    char *larger = realloc(a->text, a->length + count + 1);
-    if (!larger) { snprintf(a->notice, sizeof a->notice, "Out of memory"); return; }
-    a->text = larger;
-    memmove(a->text + a->cursor + count, a->text + a->cursor, a->length - a->cursor + 1);
-    memcpy(a->text + a->cursor, bytes, count);
-    a->length += count;
-    a->cursor += count;
+static bool replace_bytes(struct app *a, size_t start, size_t removed,
+                          const char *inserted, size_t added) {
+    if (start > a->length || removed > a->length - start ||
+        added > MAX_FILE - (a->length - removed)) {
+        snprintf(a->notice, sizeof a->notice, "Document size limit reached");
+        return false;
+    }
+    size_t new_length = a->length - removed + added;
+    if (new_length + 1 > a->capacity) {
+        size_t capacity = a->capacity ? a->capacity : 64;
+        while (capacity < new_length + 1 && capacity < MAX_FILE + 1)
+            capacity = capacity > (MAX_FILE + 1) / 2 ? MAX_FILE + 1 : capacity * 2;
+        char *larger = realloc(a->text, capacity);
+        if (!larger) {
+            snprintf(a->notice, sizeof a->notice, "Out of memory");
+            return false;
+        }
+        a->text = larger;
+        a->capacity = capacity;
+    }
+    memmove(a->text + start + added, a->text + start + removed,
+            a->length - start - removed + 1);
+    if (added) memcpy(a->text + start, inserted, added);
+    a->length = new_length;
+    a->cursor = start + added;
     a->dirty = true;
+    return true;
+}
+
+static void edit_text(struct app *a, size_t start, size_t end,
+                      const char *inserted, size_t added) {
+    if (start > end || end > a->length || (!added && start == end)) return;
+    struct edit change = {.start = start, .removed_len = end - start,
+                          .inserted_len = added, .cursor_before = a->cursor,
+                          .when = time(NULL)};
+    if (change.removed_len) {
+        change.removed = malloc(change.removed_len);
+        if (change.removed) memcpy(change.removed, a->text + start, change.removed_len);
+    }
+    if (added) {
+        change.inserted = malloc(added);
+        if (change.inserted) memcpy(change.inserted, inserted, added);
+    }
+    if ((change.removed_len && !change.removed) || (added && !change.inserted)) {
+        free_edit(&change);
+        snprintf(a->notice, sizeof a->notice, "Out of memory");
+        return;
+    }
+    if (!replace_bytes(a, start, change.removed_len, inserted, added)) {
+        free_edit(&change);
+        return;
+    }
+    if (added && !change.removed_len && a->undo_position == a->undo_count &&
+        a->undo_count && change.when > 0) {
+        struct edit *previous = &a->undo[a->undo_count - 1];
+        bool plain = true;
+        for (size_t i = 0; i < added; i++)
+            if (inserted[i] == ' ' || inserted[i] == '\t' || inserted[i] == '\n') plain = false;
+        if (plain && !previous->removed_len && previous->inserted_len &&
+            previous->start + previous->inserted_len == start &&
+            previous->inserted_len + added <= 512 && previous->when > 0 &&
+            change.when >= previous->when && change.when - previous->when <= 2) {
+            char *merged = realloc(previous->inserted, previous->inserted_len + added);
+            if (merged) {
+                previous->inserted = merged;
+                memcpy(previous->inserted + previous->inserted_len, inserted, added);
+                previous->inserted_len += added;
+                previous->when = change.when;
+                free_edit(&change);
+                a->notice[0] = 0;
+                return;
+            }
+        }
+    }
+    for (int i = a->undo_position; i < a->undo_count; i++) free_edit(&a->undo[i]);
+    a->undo_count = a->undo_position;
+    if (a->undo_count == MAX_UNDO) {
+        free_edit(&a->undo[0]);
+        memmove(a->undo, a->undo + 1, (MAX_UNDO - 1) * sizeof a->undo[0]);
+        a->undo_count--;
+        a->undo_position--;
+    }
+    a->undo[a->undo_count++] = change;
+    a->undo_position = a->undo_count;
+    a->notice[0] = 0;
+}
+
+static void insert_text(struct app *a, const char *bytes, size_t count) {
+    edit_text(a, a->cursor, a->cursor, bytes, count);
 }
 
 static void delete_range(struct app *a, size_t start, size_t end) {
-    if (start >= end || end > a->length) return;
-    memmove(a->text + start, a->text + end, a->length - end + 1);
-    a->length -= end - start;
-    a->cursor = start;
-    a->dirty = true;
+    edit_text(a, start, end, NULL, 0);
+}
+
+static void undo_edit(struct app *a, bool redo) {
+    if ((!redo && !a->undo_position) || (redo && a->undo_position == a->undo_count))
+        return;
+    struct edit *change = &a->undo[redo ? a->undo_position : a->undo_position - 1];
+    if (replace_bytes(a, change->start,
+                      redo ? change->removed_len : change->inserted_len,
+                      redo ? change->inserted : change->removed,
+                      redo ? change->inserted_len : change->removed_len)) {
+        a->cursor = redo ? change->start + change->inserted_len : change->cursor_before;
+        a->undo_position += redo ? 1 : -1;
+        snprintf(a->notice, sizeof a->notice, redo ? "Redone" : "Undone");
+    }
 }
 
 static int cursor_line(struct app *a) {
@@ -587,32 +829,58 @@ static int cursor_line(struct app *a) {
     return line;
 }
 
+static size_t line_start(const char *buffer, size_t offset) {
+    while (offset && buffer[offset - 1] != '\n') offset--;
+    return offset;
+}
+
+static size_t line_end(const char *buffer, size_t length, size_t start) {
+    while (start < length && buffer[start] != '\n') start++;
+    return start;
+}
+
+static int character_column(const char *buffer, size_t start, size_t offset) {
+    int column = 0;
+    while (start < offset) { start = next_character(buffer, offset, start); column++; }
+    return column;
+}
+
+static size_t advance_columns(const char *buffer, size_t end, size_t start, int columns) {
+    while (columns-- > 0 && start < end) start = next_character(buffer, end, start);
+    return start;
+}
+
 static void ensure_cursor_visible(struct app *a) {
     int line = cursor_line(a);
-    int rows = (a->height - 190) / ROW_HEIGHT;
+    int rows = (a->height - EDITOR_ROW_TOP - 56) / EDITOR_ROW_HEIGHT;
+    if (rows < 1) rows = 1;
     if (line < a->scroll_line) a->scroll_line = line;
     if (line >= a->scroll_line + rows) a->scroll_line = line - rows + 1;
     if (a->scroll_line < 0) a->scroll_line = 0;
+    int width = a->font ? a->font->max_advance_width : 12;
+    if (width < 1) width = 12;
+    int columns = (a->width - 108) / width;
+    if (columns < 1) columns = 1;
+    int column = character_column(a->text, line_start(a->text, a->cursor), a->cursor);
+    if (column < a->scroll_column) a->scroll_column = column;
+    if (column >= a->scroll_column + columns)
+        a->scroll_column = column - columns + 1;
 }
 
 static void move_vertical(struct app *a, int delta) {
-    size_t start = a->cursor;
-    while (start && a->text[start - 1] != '\n') start--;
-    size_t column = a->cursor - start;
+    size_t start = line_start(a->text, a->cursor);
+    int column = character_column(a->text, start, a->cursor);
     if (delta < 0) {
         if (!start) return;
         size_t previous_end = start - 1, previous_start = previous_end;
         while (previous_start && a->text[previous_start - 1] != '\n') previous_start--;
-        size_t length = previous_end - previous_start;
-        a->cursor = previous_start + (column < length ? column : length);
+        a->cursor = advance_columns(a->text, previous_end, previous_start, column);
     } else {
-        size_t end = a->cursor;
-        while (end < a->length && a->text[end] != '\n') end++;
+        size_t end = line_end(a->text, a->length, a->cursor);
         if (end == a->length) return;
         size_t next_start = end + 1, next_end = next_start;
         while (next_end < a->length && a->text[next_end] != '\n') next_end++;
-        size_t length = next_end - next_start;
-        a->cursor = next_start + (column < length ? column : length);
+        a->cursor = advance_columns(a->text, next_end, next_start, column);
     }
     ensure_cursor_visible(a);
 }
@@ -742,63 +1010,129 @@ static void render_files(struct app *a) {
     }
 }
 
-static void render(struct app *a) {
-    if (a->mode == FILES) {
-        render_files(a);
-        XFlush(a->display);
-        return;
-    }
-    box(a, 0, 0, a->width, a->height, 10, 19, 29);
-    box(a, 0, 0, a->width, 116, 19, 30, 43);
-    text(a, 24, 39, "Editor", a->font_title, 240, 246, 255);
+static void render_editor(struct app *a) {
+    box(a, 0, 0, a->width, a->height, 13, 22, 36);
+    box(a, 0, 0, a->width, 112, 25, 37, 54);
+    text(a, 24, 43, "Editor", a->font_title, 240, 247, 250);
     for (int i = 0; i < a->button_count; i++) {
         struct button *button = &a->buttons[i];
-        round_box(a, button->x, 57, button->width, 42, 7, 35, 55, 72);
-        text(a, button->x + 10, 84, button->label, a->font_small, 237, 246, 255);
+        bool save = button->command == SAVE && a->dirty;
+        round_box(a, button->x, 61, button->width, 41, 7,
+                  save ? 54 : 38, save ? 126 : 57, save ? 117 : 76);
+        text(a, button->x + 10, 87, button->label, a->font_small, 231, 241, 247);
     }
-    {
-        char name[PATH_MAX + 32];
-        snprintf(name, sizeof name, "%s%s", a->file[0] ? a->file : "Untitled",
-                 a->dirty ? "  ·  Unsaved" : "");
-        text(a, 24, 142, name, a->font_small, 157, 176, 198);
-        size_t offset = 0;
-        int line = 0;
-        while (offset < a->length && line < a->scroll_line) {
-            if (a->text[offset++] == '\n') line++;
-        }
-        int visible = (a->height - 190) / ROW_HEIGHT;
-        for (int row = 0; row < visible && offset <= a->length; row++) {
-            size_t start = offset;
-            while (offset < a->length && a->text[offset] != '\n') offset++;
-            size_t end = offset;
-            char content[4096];
-            size_t count = end - start;
-            if (count >= sizeof content) count = sizeof content - 1;
-            memcpy(content, a->text + start, count);
-            content[count] = 0;
-            text(a, 26, 177 + row * ROW_HEIGHT, content, a->font, 240, 246, 255);
-            if (a->cursor >= start && a->cursor <= end) {
-                size_t prefix = a->cursor - start;
-                if (prefix > count) prefix = count;
-                XGlyphInfo extent;
-                XftTextExtentsUtf8(a->display, a->font, (FcChar8 *)content, (int)prefix, &extent);
-                box(a, 26 + extent.xOff, 181 + row * ROW_HEIGHT, 2, 3, 80, 225, 190);
-            }
-            if (offset == a->length) break;
-            offset++;
-        }
+    const char *name = a->file[0] ? strrchr(a->file, '/') : NULL;
+    name = name && name[1] ? name + 1 : a->file[0] ? a->file : "Untitled document";
+    XRectangle title_clip = {24, 113, (unsigned short)(a->width - 160), 40};
+    XftDrawSetClipRectangles(a->draw, 0, 0, &title_clip, 1);
+    text(a, 24, 146, name, a->font_title, 239, 246, 250);
+    XftDrawSetClip(a->draw, NULL);
+    XRectangle path_clip = {24, 151, (unsigned short)(a->width - 48), 31};
+    XftDrawSetClipRectangles(a->draw, 0, 0, &path_clip, 1);
+    text(a, 24, 173, a->file[0] ? a->file : "Save to choose a location",
+         a->font_small, 146, 171, 190);
+    XftDrawSetClip(a->draw, NULL);
+    if (a->dirty) {
+        round_box(a, a->width - 112, 119, 88, 32, 7, 39, 76, 84);
+        text(a, a->width - 100, 140, "Unsaved", a->font_small, 137, 236, 214);
     }
-    box(a, 0, a->height - 43, a->width, 43, 19, 30, 43);
+    box(a, 0, 185, a->width, 1, 46, 64, 81);
+    box(a, 0, 186, 65, a->height - 229, 20, 31, 47);
+    box(a, 65, 186, 1, a->height - 229, 44, 62, 80);
+    int visible = (a->height - EDITOR_ROW_TOP - 56) / EDITOR_ROW_HEIGHT;
+    if (visible < 1) visible = 1;
+    size_t offset = 0;
+    for (int line = 0; line < a->scroll_line && offset < a->length; line++) {
+        offset = line_end(a->text, a->length, offset);
+        if (offset < a->length) offset++;
+    }
+    XRectangle content_clip = {80, EDITOR_ROW_TOP, (unsigned short)(a->width - 96),
+                               (unsigned short)(a->height - EDITOR_ROW_TOP - 51)};
+    for (int row = 0; row < visible && offset <= a->length; row++) {
+        size_t end = line_end(a->text, a->length, offset);
+        int y = EDITOR_ROW_TOP + row * EDITOR_ROW_HEIGHT;
+        if (a->cursor >= offset && a->cursor <= end)
+            box(a, 66, y, a->width - 66, EDITOR_ROW_HEIGHT, 20, 36, 52);
+        char number[24];
+        snprintf(number, sizeof number, "%d", a->scroll_line + row + 1);
+        text(a, 21, y + 22, number, a->font_small, 115, 143, 163);
+        XftDrawSetClipRectangles(a->draw, 0, 0, &content_clip, 1);
+        size_t visible_start = advance_columns(a->text, end, offset, a->scroll_column);
+        size_t visible_end = advance_columns(a->text, end, visible_start, 256);
+        char content[1025];
+        size_t count = visible_end - visible_start;
+        if (count > sizeof content - 1) count = sizeof content - 1;
+        memcpy(content, a->text + visible_start, count);
+        content[count] = 0;
+        text(a, 84, y + 22, content, a->font, 235, 243, 247);
+        if (a->cursor >= visible_start && a->cursor <= visible_end &&
+            a->cursor >= offset && a->cursor <= end) {
+            XGlyphInfo extent;
+            XftTextExtentsUtf8(a->display, a->font, (FcChar8 *)content,
+                               (int)(a->cursor - visible_start), &extent);
+            box(a, 84 + extent.xOff, y + 4, 2, 24, 80, 225, 190);
+        }
+        XftDrawSetClip(a->draw, NULL);
+        if (end == a->length) break;
+        offset = end + 1;
+    }
+    box(a, 0, a->height - 43, a->width, 43, 25, 37, 54);
+    XRectangle footer_clip = {24, (short)(a->height - 41),
+                              (unsigned short)(a->width - 48), 40};
+    XftDrawSetClipRectangles(a->draw, 0, 0, &footer_clip, 1);
     if (a->prompt != NO_PROMPT) {
-        const char *title = a->prompt == NEW_FOLDER ? "New folder" :
-                            a->prompt == RENAME ? "New name" :
-                            a->prompt == TRASH_CONFIRM ? "Type yes to move to Trash" :
-                            a->prompt == OPEN_PATH ? "Open path" : "Save path";
         char line[PATH_MAX + 64];
-        snprintf(line, sizeof line, "%s: %s_", title, a->prompt_text);
+        snprintf(line, sizeof line, "%s: %s_",
+                 a->prompt == OPEN_PATH ? "Open path" : "Save path", a->prompt_text);
         text(a, 24, a->height - 15, line, a->font_small, 80, 225, 190);
-    } else text(a, 24, a->height - 15, a->notice, a->font_small, 80, 225, 190);
+    } else {
+        char status[128];
+        int column = character_column(a->text, line_start(a->text, a->cursor), a->cursor);
+        snprintf(status, sizeof status, "Ln %d, Col %d  ·  UTF-8  ·  Ctrl+Z undo  ·  Ctrl+Y redo",
+                 cursor_line(a) + 1, column + 1);
+        if (a->notice[0] && a->width < 850)
+            text(a, 24, a->height - 15, a->notice, a->font_small, 80, 225, 190);
+        else {
+            text(a, 24, a->height - 15, status, a->font_small, 146, 171, 190);
+            if (a->notice[0]) text(a, a->width - 180, a->height - 15,
+                                   a->notice, a->font_small, 80, 225, 190);
+        }
+    }
+    XftDrawSetClip(a->draw, NULL);
+}
+
+static void render(struct app *a) {
+    if (a->mode == FILES) render_files(a);
+    else render_editor(a);
     XFlush(a->display);
+}
+
+static void editor_cursor_from_point(struct app *a, int x, int y) {
+    int row = (y - EDITOR_ROW_TOP) / EDITOR_ROW_HEIGHT;
+    if (row < 0) row = 0;
+    int target_line = a->scroll_line + row;
+    size_t start = 0;
+    for (int line = 0; line < target_line && start < a->length; line++) {
+        size_t end = line_end(a->text, a->length, start);
+        start = end < a->length ? end + 1 : a->length;
+    }
+    size_t end = line_end(a->text, a->length, start);
+    size_t visible = advance_columns(a->text, end, start, a->scroll_column);
+    a->cursor = visible;
+    if (x > 84) {
+        size_t position = visible;
+        while (position < end) {
+            size_t next = next_character(a->text, end, position);
+            XGlyphInfo extent;
+            XftTextExtentsUtf8(a->display, a->font, (FcChar8 *)(a->text + visible),
+                               (int)(next - visible), &extent);
+            if (x < 84 + extent.xOff - a->font->max_advance_width / 2) break;
+            a->cursor = next;
+            position = next;
+            if (extent.xOff > a->width - 96) break;
+        }
+    }
+    ensure_cursor_visible(a);
 }
 
 static void keypress(struct app *a, XKeyEvent *event) {
@@ -844,9 +1178,16 @@ static void keypress(struct app *a, XKeyEvent *event) {
         return;
     }
     if (event->state & ControlMask) {
-        if (symbol == XK_s) command(a, SAVE);
-        else if (symbol == XK_o) command(a, OPEN);
-        else if (symbol == XK_n) command(a, NEW);
+        if (symbol == XK_s || symbol == XK_S)
+            command(a, event->state & ShiftMask ? SAVE_AS : SAVE);
+        else if (symbol == XK_o || symbol == XK_O) command(a, OPEN);
+        else if (symbol == XK_n || symbol == XK_N) command(a, NEW);
+        else if (symbol == XK_z || symbol == XK_Z)
+            undo_edit(a, (event->state & ShiftMask) != 0);
+        else if (symbol == XK_y || symbol == XK_Y) undo_edit(a, true);
+        else if (symbol == XK_Home) a->cursor = 0;
+        else if (symbol == XK_End) a->cursor = a->length;
+        ensure_cursor_visible(a);
         return;
     }
     switch (symbol) {
@@ -886,12 +1227,14 @@ static void click(struct app *a, XButtonEvent *event) {
         } else {
             a->scroll_line += event->button == 5 ? 3 : -3;
             if (a->scroll_line < 0) a->scroll_line = 0;
+            int lines = 0;
+            for (size_t i = 0; i < a->length; i++) if (a->text[i] == '\n') lines++;
+            if (a->scroll_line > lines) a->scroll_line = lines;
         }
         return;
     }
     if (event->button != 1) return;
-    if (event->y >= (a->mode == FILES ? 61 : 57) &&
-        event->y < (a->mode == FILES ? 102 : 100)) {
+    if (event->y >= 61 && event->y < 102) {
         for (int i = 0; i < a->button_count; i++) {
             struct button *button = &a->buttons[i];
             if (event->x >= button->x && event->x < button->x + button->width) {
@@ -929,6 +1272,9 @@ static void click(struct app *a, XButtonEvent *event) {
             if (double_click) open_selected(a);
         }
     }
+    if (a->mode == EDITOR && a->prompt == NO_PROMPT &&
+        event->y >= EDITOR_ROW_TOP && event->y < a->height - 43)
+        editor_cursor_from_point(a, event->x, event->y);
 }
 
 static bool setup(struct app *a) {
@@ -969,10 +1315,10 @@ static bool setup(struct app *a) {
 
 int main(int argc, char **argv) {
     if (argc == 2 && !strcmp(argv[1], "--version")) {
-        puts("Heurism Files/Editor 0.3 (C/X11/Xft/GIO)"); return 0;
+        puts("Heurism Files/Editor 0.4 (C/X11/Xft/GIO)"); return 0;
     }
     setlocale(LC_CTYPE, "");
-    struct app a = {.selected = -1};
+    struct app a = {.selected = -1, .draft_lock = -1};
     const char *program = strrchr(argv[0], '/');
     program = program ? program + 1 : argv[0];
     a.mode = strstr(program, "editor") ? EDITOR : FILES;
@@ -987,22 +1333,15 @@ int main(int argc, char **argv) {
     } else {
         a.text = strdup("");
         if (!a.text) return 1;
-        char local[PATH_MAX], state[PATH_MAX];
-        if (path_join(local, sizeof local, a.home, ".local") &&
-            path_join(state, sizeof state, local, "state") &&
-            path_join(a.draft, sizeof a.draft, state, "heurism/native-editor-draft.json")) {
-            char heurism[PATH_MAX];
-            if (path_join(heurism, sizeof heurism, state, "heurism") &&
-                ensure_directory(local, 0700) && ensure_directory(state, 0700))
-                ensure_directory(heurism, 0700);
-        }
+        a.capacity = 1;
         if (argc == 2) set_file(&a, argv[1]);
-        else load_draft(&a);
+        prepare_draft(&a, argc != 2);
     }
     configure_buttons(&a);
     if (!setup(&a)) return fprintf(stderr, "Heurism application requires X11 TrueColor\n"), 1;
     render(&a);
     bool running = true;
+    bool window_alive = true;
     while (running) {
         while (XPending(a.display)) {
             XEvent event;
@@ -1016,6 +1355,11 @@ int main(int argc, char **argv) {
             else if (event.type == ButtonPress) { click(&a, &event.xbutton); render(&a); }
             else if (event.type == FocusIn && a.input_context) XSetICFocus(a.input_context);
             else if (event.type == FocusOut && a.input_context) XUnsetICFocus(a.input_context);
+            else if (event.type == DestroyNotify &&
+                     event.xdestroywindow.window == a.window) {
+                window_alive = false;
+                running = false;
+            }
             else if (event.type == ClientMessage &&
                      (Atom)event.xclient.data.l[0] == a.delete_window) running = false;
         }
@@ -1029,14 +1373,20 @@ int main(int argc, char **argv) {
         if (ready < 0 && errno != EINTR) break;
     }
     if (a.mode == EDITOR && a.dirty) save_draft(&a);
+    if (a.draft_lock >= 0) {
+        close(a.draft_lock);
+        if (access(a.draft, F_OK)) unlink(a.draft_lock_path);
+    }
     if (a.input_context) XDestroyIC(a.input_context);
     if (a.input_method) XCloseIM(a.input_method);
-    XftDrawDestroy(a.draw);
+    if (window_alive) XftDrawDestroy(a.draw);
     XftFontClose(a.display, a.font);
     XftFontClose(a.display, a.font_small);
+    XftFontClose(a.display, a.font_title);
     XFreeGC(a.display, a.gc);
-    XDestroyWindow(a.display, a.window);
+    if (window_alive) XDestroyWindow(a.display, a.window);
     XCloseDisplay(a.display);
+    clear_undo(&a);
     free(a.text);
     return 0;
 }

@@ -1,5 +1,25 @@
 # Current product direction
 
+On 2026-10-10 the C Editor gained numbered rows, visible pointer-placed
+caret, horizontal scrolling, UTF-8 column movement, bounded undo/redo and
+per-process locked drafts with inactive-draft recovery and legacy migration.
+The isolated VM gate tests two simultaneous Editors, recovery and migration.
+The VM release is
+`/opt/heurism/native/releases/heurism-os-20261010T172320Z-20197`, verified
+after checked reboot to `e507e4db-871e-4de0-ab29-8637d3721833`; checkpoint
+`Heurism-Editor-migration-20261010` has UUID
+`8e186c4c-ee4f-4eda-86d3-98a76f0cac5d`. The VM is intentionally locked on
+boot; pointer wake painted its password prompt.
+The Dell release is
+`/opt/heurism/native/releases/heurism-os-dell-20261010T172614Z-14907`,
+activated with the guarded installer on the existing boot
+`edb102d9-25c6-409c-aa17-181fea3eaf41`. Root SSH/watch/control/UI,
+protected hashes and SSD boot orders remain healthy. No Dell reboot or
+physical display acceptance occurred. Build packages were removed. The next
+desktop work is a coherent C design system, Editor selection/clipboard/find,
+better window arrangement, and Settings/lock/notification consistency. See
+`docs/heurism-modern-workspace.md`.
+
 On 2026-10-10 the owner rejected the dashboard-like C desktop as dated and
 asked for a modern, window-first Heurism workspace. The new C desktop 0.7
 removes the large app and system cards. It has a persistent top status panel,

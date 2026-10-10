@@ -1,5 +1,41 @@
 # Heurism window-first workspace, 2026-10-10
 
+## Product direction
+
+Current desktop systems converge on a few useful patterns: windows and
+workspaces that are easy to arrange, search that can open and act on work,
+controls close to the task, and accessibility and security that are part of
+the everyday interface. Apple's macOS Tahoe updates Spotlight actions and
+its visual system; Windows 11 develops Snap layouts and contextual search;
+KDE Plasma 6.4 develops flexible tiling; GNOME 49 improves quick settings and
+accessibility. Sources: [Apple](https://www.apple.com/ca/newsroom/2025/06/macos-tahoe-26-makes-the-mac-more-capable-productive-and-intelligent-than-ever/),
+[Microsoft](https://learn.microsoft.com/en-us/windows/apps/desktop/modernize/ui/apply-snap-layout-menu),
+[KDE](https://kde.org/gl/announcements/plasma/6/6.4.0/),
+[GNOME](https://release.gnome.org/49/).
+
+For Heurism, the design target is a calm, immediately usable workspace with
+its own typography, color, iconography, motion and window chrome. Search should
+find apps, local documents, settings and commands with explicit action names.
+Windows should tile and move between spaces predictably. Built-in Files,
+Editor, Terminal, Settings, lock screen and power controls should follow the
+same interaction rules. Keyboard and touch must both work, with contrast,
+focus and text size exposed as real controls. A dock or graphic treatment
+alone does not meet this target. Prefer local, inspectable features over
+collecting user activity or adding opaque AI services.
+
+The current 0.7 screenshot still reads as an interim desktop: large empty
+background, small symbolic dock tiles, limited window arrangement and no
+visible indication of work in other spaces. The Editor improvement below
+fixes a core task, but it does not by itself finish the visual redesign.
+
+The implementation sequence is: finish core app interaction (Editor
+selection, clipboard and find; Files keyboard and drag actions), establish a
+shared C UI toolkit and visual tokens, improve tiling/space overview and
+search, then bring Settings, lock screen and notifications into that system.
+Keep the established Linux driver, Xfwm and Xfce recovery paths while the C
+experience matures. The present X11 shared user session and unencrypted disk
+remain security limits; the current look is an interim release.
+
 The owner rejected the C desktop's four large application cards and system
 dashboard as dated. Desktop 0.7 makes the desktop a work surface for real
 windows. A persistent 48-pixel top panel shows the workspace, connection and
@@ -166,3 +202,48 @@ be unavailable if another window manager configuration claims the same keys;
 the clickable panel remains available in that case. Touch ergonomics,
 Unicode search input, Editor and Settings consistency, notifications and
 accessibility remain open.
+
+## C Editor 0.4, 2026-10-10
+
+Editor now uses the same visual language as Files: a document header, clear
+save state, numbered text rows and a compact line/column footer. The text
+caret is visible and can be placed with a pointer. Long lines scroll
+horizontally as the caret moves. Vertical movement counts UTF-8 characters
+instead of raw bytes. Ctrl+Z and Ctrl+Y undo and redo edits; continuous typing
+is grouped for up to two seconds, with a bounded 128-step history. Each Editor
+process now owns a uniquely named draft and a held file lock; another Editor
+cannot overwrite or recover its active draft. A fresh Editor recovers the
+newest inactive draft. The previous single-draft file migrates on first open
+and is removed only after the new draft is saved. Closing a window exits its
+process cleanly. File and draft input reject invalid UTF-8 and embedded NUL
+bytes before being shown.
+
+The isolated VM Editor test covers pointer placement, save, undo, redo,
+continuous typing, a long line, concurrent drafts, recovery and legacy draft
+migration. The VM installer runs both Files and Editor interaction tests before
+sealing a release. Captured Editor windows are `build/prime-vm/editor-initial.png` and
+`build/prime-vm/editor-long-line.png`. The active VM release is
+`/opt/heurism/native/releases/heurism-os-20261010T172320Z-20197`; checked
+reboot returned fresh boot `e507e4db-871e-4de0-ab29-8637d3721833` with
+release and service health. The VM has intentional `/etc/heurism/desktop-lock`:
+pointer wake painted the password prompt in
+`build/prime-vm/heurism-editor-final-lock.png`. This is lock-screen evidence,
+not an unlocked desktop paint check. Checkpoint
+`Heurism-Editor-migration-20261010` has UUID
+`8e186c4c-ee4f-4eda-86d3-98a76f0cac5d`.
+
+The Dell app gate uses a disposable home directory for Editor drafts. It
+verified pointer placement, undo, redo and save on isolated Xvfb `:2`, then
+the Dell-only assembler passed the broader shell, control, workspace, app
+and sealed-release gates. The guarded installer activated
+`/opt/heurism/native/releases/heurism-os-dell-20261010T172614Z-14907`.
+On the existing boot `edb102d9-25c6-409c-aa17-181fea3eaf41`, live UI,
+root SSH, watch, control, eight protected hashes, `BootCurrent` 0005,
+`BootOrder` 0005,0000, `DriverOrder` 0000,0001 and absent BootNext passed
+after temporary build packages were removed. The Dell was not rebooted or
+physically viewed, so physical interaction and post-reboot persistence of this
+release remain unverified.
+
+Editor still lacks text selection, clipboard editing, find and replace, and
+large-document indexing. Settings, notifications, accessibility and the X11
+security boundary remain open desktop work.
