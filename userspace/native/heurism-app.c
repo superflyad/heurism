@@ -576,7 +576,14 @@ static void render(struct app *a) {
     }
     if (a->mode == FILES) {
         char title[PATH_MAX + 16];
-        snprintf(title, sizeof title, "Location: %s", a->directory);
+        size_t home_length = strlen(a->home);
+        if (!strcmp(a->directory, a->home))
+            snprintf(title, sizeof title, "Location: Home");
+        else if (!strncmp(a->directory, a->home, home_length) &&
+                 a->directory[home_length] == '/')
+            snprintf(title, sizeof title, "Location: Home%s", a->directory + home_length);
+        else
+            snprintf(title, sizeof title, "Location: %s", a->directory);
         text(a, 24, 143, title, a->font_small, 157, 176, 198);
         int visible = (a->height - 205) / ROW_HEIGHT;
         for (int row = 0; row < visible && row + a->scroll < a->entry_count; row++) {
@@ -768,7 +775,7 @@ static bool setup(struct app *a) {
 
 int main(int argc, char **argv) {
     if (argc == 2 && !strcmp(argv[1], "--version")) {
-        puts("Heurism Files/Editor 0.1 (C/X11/Xft)"); return 0;
+        puts("Heurism Files/Editor 0.2 (C/X11/Xft)"); return 0;
     }
     setlocale(LC_CTYPE, "");
     struct app a = {.selected = -1};

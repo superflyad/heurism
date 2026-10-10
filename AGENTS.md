@@ -1,5 +1,23 @@
 # Current product direction
 
+On 2026-10-10, `CompanionDev` moved from Xfce's visible panels/desktop to a
+Heurism C workspace selected by `heurism` in
+`/etc/companion/native-session-mode`. Its sealed release is
+`/opt/heurism/native/releases/heurism-os-20261010T142713Z-21679`.
+Xfwm4 remains the window manager and Xfce's PAM screensaver is required
+before C workspace health; root SSH/watch/control stay independent. The C
+workspace has a new centered app/system layout and running-task dock. Files
+and Terminal opened in isolated Xvfb UI clicks. A live locker-failure test
+automatically selected the locked Xfce recovery session and retained root
+management; reselecting Heurism and a checked reboot returned healthy boot
+`0e0739b9-f3b1-4692-b562-2120b64026ca`. Protected hashes passed and
+temporary build packages were removed. The prechange VM checkpoint is
+`Heurism-C-workspace-experiment-20261010`, UUID
+`f0db5c40-16dc-4800-9ca5-35aca8b363fe`. The Dell was untouched and
+still uses Xfce. This does not close signed inactive-root staging,
+physical firmware recovery, shared-X11 security or Dell UI acceptance.
+See `docs/heurism-shell-vm.md`.
+
 On 2026-10-09 local / 2026-10-10 UTC, VM-only C `heurism-slot` was added to
 fresh images for inactive-root verification, one-time B queue, health-gated
 B renewal and fallback. Its exact-DMI/layout guards reject the current

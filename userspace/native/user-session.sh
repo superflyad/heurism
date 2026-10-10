@@ -45,16 +45,75 @@ native_session() {
     exit "$result"
 }
 
+heurism_session() {
+    # Xfwm supplies established window management; the C workspace owns the
+    # visible desktop and dock. A locked machine must verify its PAM locker
+    # before the workspace can publish health.
+    command -v xfwm4 >/dev/null
+    command -v xfsettingsd >/dev/null
+    command -v xfce4-screensaver >/dev/null
+    command -v xfce4-screensaver-command >/dev/null
+    export XDG_CURRENT_DESKTOP=XFCE DESKTOP_SESSION=heurism XDG_SESSION_DESKTOP=heurism
+    export XDG_SESSION_TYPE=x11
+    xfsettingsd >"$state/heurism-settings-daemon.log" 2>&1 &
+    settings_daemon=$!
+    xfwm4 >"$state/heurism-window-manager.log" 2>&1 &
+    wm=$!
+    ready=0
+    for attempt in 1 2 3 4 5 6 7 8 9 10; do
+        if kill -0 "$wm" 2>/dev/null &&
+           xprop -root _NET_SUPPORTING_WM_CHECK 2>/dev/null | grep -q 'window id'; then
+            ready=1
+            break
+        fi
+        sleep 1
+    done
+    test "$ready" = 1 || return 1
+    xfce4-screensaver >"$state/heurism-locker.log" 2>&1 &
+    if [ -e /etc/heurism/desktop-lock ]; then
+        locked=0
+        for attempt in 1 2 3 4 5 6 7 8 9 10; do
+            xfce4-screensaver-command --lock >/dev/null 2>&1 || true
+            if LC_ALL=C xfce4-screensaver-command --query 2>/dev/null |
+               grep -Fxq 'The screensaver is active'; then
+                locked=1
+                break
+            fi
+            sleep 1
+        done
+        test "$locked" = 1 || return 1
+    fi
+    "$release/heurism-desktop" >"$state/heurism-workspace.log" 2>&1 &
+    workspace=$!
+    while kill -0 "$workspace" 2>/dev/null; do
+        if ! kill -0 "$wm" 2>/dev/null ||
+           ! kill -0 "$settings_daemon" 2>/dev/null ||
+           { [ -e /etc/heurism/desktop-lock ] &&
+             ! pgrep -u "$(id -u)" -f '^xfce4-screensaver($| )' >/dev/null; }; then
+            kill "$workspace" 2>/dev/null || true
+            wait "$workspace" 2>/dev/null || true
+            return 1
+        fi
+        sleep 1
+    done
+    wait "$workspace"
+}
+
 mode=xfce
 if [ -r /etc/companion/native-session-mode ]; then
     mode=$(cat /etc/companion/native-session-mode)
 fi
-if [ -e /etc/heurism/desktop-lock ] && [ "$mode" != xfce ]; then
+if [ -e /etc/heurism/desktop-lock ] && [ "$mode" != xfce ] &&
+   [ "$mode" != heurism ]; then
     echo 'Locked desktop requires the Xfce session' >&2
     exit 1
 fi
 if [ "$mode" = native ]; then
     native_session
+fi
+if [ "$mode" = heurism ]; then
+    heurism_session
+    exit $?
 fi
 if [ "$mode" != xfce ]; then
     echo "Unsupported Heurism session: $mode; starting C workspace" >&2

@@ -1,6 +1,6 @@
 # Xfce desktop bridge
 
-The established desktop in Heurism is Alpine's Xfce 4.20 on the existing
+The established Dell and recovery desktop is Alpine's Xfce 4.20 on the existing
 Linux/Xorg foundation. It supplies window management, a top application panel,
 a bottom launcher dock, desktop icons, Thunar file management, Mousepad editing
 and an ordinary Xfce terminal. Heurism owned shell, terminal, settings,

@@ -37,6 +37,18 @@ cleanup() {
 }
 trap cleanup EXIT
 trap 'exit 143' TERM INT HUP
+select_xfce_recovery() {
+    if [ "$(cat /etc/companion/native-session-mode 2>/dev/null || true)" != heurism ]; then
+        return
+    fi
+    # A failed C workspace or locker must leave an accessible, locked desktop
+    # on the next supervised Xorg start. Only this root client changes mode.
+    temporary=/etc/companion/native-session-mode.recovery.$$
+    printf 'xfce\n' >"$temporary"
+    chmod 644 "$temporary"
+    mv -f "$temporary" /etc/companion/native-session-mode
+    echo 'Heurism workspace failed; selected Xfce recovery session' >&2
+}
 su -s /bin/sh -c "export XDG_RUNTIME_DIR=/run/heurism-desktop/user HEURISM_SESSION_TOKEN=$token; exec dbus-run-session /opt/heurism/native/current/user-session.sh" companion-ui &
 client=$!
 ready=0
@@ -53,6 +65,13 @@ if [ "$ready" = 0 ]; then
     : > /run/heurism-desktop/startup-failed
     kill "$client" 2>/dev/null || true
     wait "$client" 2>/dev/null || true
+    select_xfce_recovery
     exit 1
 fi
-wait "$client"
+if wait "$client"; then
+    exit 0
+else
+    result=$?
+fi
+select_xfce_recovery
+exit "$result"

@@ -94,9 +94,11 @@ static void fill(struct desktop *d, Window window, int x, int y, int width, int 
 
 static void label(struct desktop *d, Window window, int x, int y, XftFont *font,
                   const char *text, unsigned red, unsigned green, unsigned blue) {
-    if (d->light && red == 239 && green == 245 && blue == 255) {
+    bool light_page = d->light && window == d->background &&
+                      (d->settings_mode || d->page != WORKSPACE);
+    if (light_page && red == 239 && green == 245 && blue == 255) {
         red = 24; green = 42; blue = 62;
-    } else if (d->light && red == 157 && green == 176 && blue == 198) {
+    } else if (light_page && red == 157 && green == 176 && blue == 198) {
         red = 70; green = 91; blue = 112;
     }
     XftDraw *draw = window == d->dock ? d->dock_draw : d->background_draw;
@@ -114,14 +116,16 @@ static void hit(struct desktop *d, Window window, int x, int y, int width, int h
 
 static void button(struct desktop *d, Window window, int x, int y, int width, int height,
                    const char *text, enum action action, int index, bool accent) {
+    bool light_button = d->light && window == d->background &&
+                        (d->settings_mode || d->page != WORKSPACE);
     if (accent) fill(d, window, x, y, width, height, 80, 225, 190);
-    else fill(d, window, x, y, width, height, d->light ? 218 : 29,
-              d->light ? 230 : 48, d->light ? 239 : 65);
+    else fill(d, window, x, y, width, height, light_button ? 218 : 29,
+              light_button ? 230 : 48, light_button ? 239 : 65);
     XftFont *font = window == d->dock ? d->font_small : d->font_body;
     label(d, window, x + (window == d->dock ? 10 : 14),
           y + height / 2 + font->ascent / 2 - 2,
-          font, text, accent ? 8 : d->light ? 20 : 235,
-          accent ? 39 : d->light ? 39 : 243, accent ? 32 : d->light ? 55 : 250);
+          font, text, accent ? 8 : light_button ? 20 : 235,
+          accent ? 39 : light_button ? 39 : 243, accent ? 32 : light_button ? 55 : 250);
     hit(d, window, x, y, width, height, action, index);
 }
 
@@ -303,10 +307,10 @@ static void refresh_tasks(struct desktop *d) {
 }
 
 static void render_dock(struct desktop *d) {
-    fill(d, d->dock, 0, 0, d->dock_width, 68, d->light ? 240 : 15,
-         d->light ? 246 : 27, d->light ? 250 : 40);
+    fill(d, d->dock, 0, 0, d->dock_width, 68, 10, 28, 40);
+    fill(d, d->dock, 0, 0, d->dock_width, 2, 215, 168, 101);
     int x = 14;
-    button(d, d->dock, x, 10, 114, 46, "Heurism", SHOW_MENU, 0, true); x += 120;
+    button(d, d->dock, x, 10, 114, 46, "Heurism", SHOW_MENU, 0, true); x += 124;
     const struct { const char *title; enum action action; int width; } apps[] = {
         {"Files", LAUNCH_FILES, 64}, {"Editor", LAUNCH_EDITOR, 70},
         {"Browser", LAUNCH_BROWSER, 82}, {"Terminal", LAUNCH_TERMINAL, 86}
@@ -329,29 +333,81 @@ static void render_dock(struct desktop *d) {
     char clock_text[16];
     strftime(clock_text, sizeof clock_text, "%H:%M", &local);
     label(d, d->dock, d->dock_width - 205, 39, d->font_small,
-          d->address[0] ? d->address : d->wifi_address[0] ? d->wifi_address : "Offline",
-          157, 176, 198);
+          d->address[0] ? "Connected" : "Offline", 157, 176, 198);
     label(d, d->dock, d->dock_width - 60, 39, d->font_small, clock_text, 239, 245, 255);
 }
 
+static void workspace_card(struct desktop *d, int x, int y, int width,
+                           const char *number, const char *title, const char *detail,
+                           enum action action, bool warm) {
+    fill(d, d->background, x, y, width, 154, 19, 43, 56);
+    fill(d, d->background, x, y, 4, 154, warm ? 215 : 77,
+         warm ? 168 : 211, warm ? 101 : 194);
+    label(d, d->background, x + 22, y + 34, d->font_small, number,
+          warm ? 215 : 77, warm ? 168 : 211, warm ? 101 : 194);
+    label(d, d->background, x + 22, y + 84, d->font_body, title, 239, 245, 255);
+    label(d, d->background, x + 22, y + 120, d->font_small, detail, 157, 176, 198);
+    hit(d, d->background, x, y, width, 154, action, 0);
+}
+
 static void render_workspace(struct desktop *d) {
-    label(d, d->background, 56, 88, d->font_body, "H E U R I S M", 80, 225, 190);
-    label(d, d->background, 56, 164, d->font_large, "Your workspace", 239, 245, 255);
-    label(d, d->background, 58, 195, d->font_body,
-          "Applications, files and system settings", 157, 176, 198);
-    const struct { const char *title; enum action action; } items[] = {
-        {"Files", LAUNCH_FILES}, {"Editor", LAUNCH_EDITOR},
-        {"Browser", LAUNCH_BROWSER}, {"Terminal", LAUNCH_TERMINAL},
-        {"Keyboard", LAUNCH_KEYBOARD}, {"Network", SHOW_NETWORK},
-        {"Settings", SHOW_SETTINGS}, {d->dell ? "Sound" : "System",
-                                     d->dell ? SHOW_SOUND : SHOW_OVERVIEW}
-    };
-    for (int i = 0; i < 8; i++) {
-        int x = 58 + (i % 4) * 190, y = 260 + (i / 4) * 126;
-        button(d, d->background, x, y, 172, 108, items[i].title, items[i].action, 0, false);
-    }
-    label(d, d->background, 58, d->height - 120, d->font_small,
-          "Heurism on Linux  ·  Alt+Tab: switch windows", 157, 176, 198);
+    int content = d->width - 64;
+    if (content > 1168) content = 1168;
+    int x = (d->width - content) / 2;
+    int left = content * 52 / 100;
+    int card = (left - 18) / 2;
+    int right = x + left + 24;
+    int right_width = content - left - 24;
+    fill(d, d->background, 0, 0, d->width, d->height, 8, 20, 31);
+    fill(d, d->background, 0, 0, d->width, 66, 12, 32, 43);
+    fill(d, d->background, 0, 65, d->width, 1, 45, 88, 94);
+    fill(d, d->background, x, 17, 34, 34, 72, 202, 182);
+    label(d, d->background, x + 10, 42, d->font_body, "H", 8, 32, 39);
+    label(d, d->background, x + 50, 42, d->font_body, "HEURISM", 239, 245, 255);
+    label(d, d->background, right, 42, d->font_small,
+          d->address[0] ? d->address : "Offline", 157, 176, 198);
+
+    label(d, d->background, x, 113, d->font_small,
+          "WORKSPACE  /  YOUR MACHINE", 77, 211, 194);
+    label(d, d->background, x, 169, d->font_large, "Workspace", 239, 245, 255);
+    label(d, d->background, x, 199, d->font_small,
+          "Tools, open windows and system state in one place.", 157, 176, 198);
+    workspace_card(d, x, 230, card, "01  ORGANIZE", "Files",
+                   "Browse and manage", LAUNCH_FILES, false);
+    workspace_card(d, x + card + 18, 230, card, "02  CREATE", "Editor",
+                   "Write and revise", LAUNCH_EDITOR, true);
+    workspace_card(d, x, 402, card, "03  EXPLORE", "Browser",
+                   "Open the web", LAUNCH_BROWSER, true);
+    workspace_card(d, x + card + 18, 402, card, "04  BUILD", "Terminal",
+                   "Command the system", LAUNCH_TERMINAL, false);
+
+    fill(d, d->background, right, 230, right_width, 326, 15, 40, 52);
+    fill(d, d->background, right, 230, right_width, 3, 215, 168, 101);
+    label(d, d->background, right + 25, 268, d->font_small,
+          "SYSTEM  /  LIVE", 215, 168, 101);
+    label(d, d->background, right + 25, 310, d->font_body,
+          d->hostname[0] ? d->hostname : "This machine", 239, 245, 255);
+    char line[192];
+    snprintf(line, sizeof line, "Network     %s", d->address[0] ? d->address : "Offline");
+    label(d, d->background, right + 25, 354, d->font_small, line, 157, 176, 198);
+    snprintf(line, sizeof line, "Memory      %lld MiB available", d->free_memory / 1048576);
+    label(d, d->background, right + 25, 390, d->font_small, line, 157, 176, 198);
+    snprintf(line, sizeof line, "Access       SSH %s  ·  Watch %s",
+             d->ssh ? "ready" : "down", d->watch ? "ready" : "down");
+    label(d, d->background, right + 25, 426, d->font_small, line, 157, 176, 198);
+    fill(d, d->background, right + 25, 448, right_width - 50, 1, 43, 75, 82);
+    label(d, d->background, right + 25, 479, d->font_small,
+          d->task_count ? "OPEN WINDOWS" : "NO WINDOWS OPEN", 77, 211, 194);
+    for (int i = 0; i < d->task_count && i < 2; i++)
+        button(d, d->background, right + 25 + i * ((right_width - 58) / 2), 494,
+               (right_width - 66) / 2, 43, d->tasks[i].title, SWITCH_TASK, i, false);
+
+    button(d, d->background, x, 585, 168, 48, "Settings", SHOW_SETTINGS, 0, false);
+    button(d, d->background, x + 180, 585, 168, 48, "Network", SHOW_NETWORK, 0, false);
+    button(d, d->background, x + 360, 585, 168, 48, "Keyboard", LAUNCH_KEYBOARD, 0, false);
+    button(d, d->background, right, 585, 168, 48, "System", SHOW_OVERVIEW, 0, false);
+    label(d, d->background, x, d->height - 126, d->font_small,
+          "F1 System    F2 Settings    Alt+Tab Windows", 157, 176, 198);
 }
 
 static const char *bios_name(int index) {
@@ -382,6 +438,10 @@ static int bios_value_count(struct desktop *d) {
 }
 
 static void render_page(struct desktop *d) {
+    if (d->page == WORKSPACE && !d->settings_mode && !d->power_mode) {
+        render_workspace(d);
+        return;
+    }
     unsigned br = d->light ? 247 : 9, bg = d->light ? 250 : 19, bb = d->light ? 252 : 31;
     fill(d, d->background, 0, 0, d->width, d->height, br, bg, bb);
     XSetForeground(d->display, d->gc, rgb(d, 18, 64, 83));
@@ -600,7 +660,7 @@ static void publish_health(struct desktop *d) {
     json_object_object_add(record, "uid", json_object_new_int((int)getuid()));
     json_object_object_add(record, "release", json_object_new_string(executable));
     json_object_object_add(record, "boot_id", json_object_new_string(d->boot_id));
-    json_object_object_add(record, "version", json_object_new_string("native-0.1"));
+    json_object_object_add(record, "version", json_object_new_string("native-0.2"));
     const char *pages[] = {"workspace", "menu", "overview", "settings", "device", "network", "sound"};
     _Static_assert(sizeof pages / sizeof pages[0] == SOUND + 1,
                    "every desktop page needs a health name");
@@ -981,7 +1041,7 @@ static int show_home(void) {
 int main(int argc, char **argv) {
     setlocale(LC_ALL, "");
     if (argc == 2 && !strcmp(argv[1], "--version")) {
-        puts("Heurism desktop 0.1 (C/X11/Xft)"); return 0;
+        puts("Heurism desktop 0.2 (C/X11/Xft)"); return 0;
     }
     if (argc == 2 && !strcmp(argv[1], "--home")) return show_home();
     struct desktop d = {.page = WORKSPACE, .control_socket = DEFAULT_SOCKET,

@@ -1142,6 +1142,14 @@ static bool save_preferences(void) {
     return good;
 }
 
+static bool prepare_default_state(void) {
+    if (strcmp(state_path, DEFAULT_STATE)) return true;
+    if (mkdir("/var/lib/companion/desktop", 0700) && errno != EEXIST) return false;
+    struct stat info;
+    return !lstat("/var/lib/companion/desktop", &info) &&
+           S_ISDIR(info.st_mode) && info.st_uid == 0 && !(info.st_mode & 0022);
+}
+
 static struct json_object *status_data(void) {
     struct json_object *root = json_object_new_object();
     char value[256], current[64], healthy[64];
@@ -1338,6 +1346,8 @@ int main(int argc, char **argv) {
     if (!desktop) return fprintf(stderr, "companion-ui account missing\n"), 1;
     gid_t desktop_gid = desktop->pw_gid;
     uid_t desktop_uid = desktop->pw_uid;
+    if (!prepare_default_state())
+        return fprintf(stderr, "control state directory unavailable\n"), 1;
     load_preferences();
     setenv("DISPLAY", ":0", 1);
     setenv("XAUTHORITY",
