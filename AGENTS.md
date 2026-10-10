@@ -1,5 +1,24 @@
 # Current product direction
 
+On 2026-10-10 C Spaces gained left/right window placement. It asks Xfwm to
+move and resize the selected window within the EWMH work area, accounting for
+the window frame so a two-window pair fits between the panel and dock. The
+isolated 1280×800 VM test verified terminal/editor side by side and the Dell
+1920×1080 test verified placement without touching its live display. The VM
+active release is `/opt/heurism/native/releases/heurism-os-20261010T180247Z-67108`;
+a checked reboot returned fresh boot `6ab26f74-b594-4d59-8a6b-d8561772dde1`
+with release, SSH/watch/control/UI healthy. Checkpoint
+`Heurism-window-tiling-20261010` has UUID
+`bd7b3dfd-8d8f-46d0-a232-d47b933c17d1`. Dell guarded activation selected
+`/opt/heurism/native/releases/heurism-os-dell-20261010T180235Z-28708` on
+unchanged boot `edb102d9-25c6-409c-aa17-181fea3eaf41`. Live root
+SSH/watch/control/UI, eight protected hashes, BootCurrent 0005, BootOrder
+0005,0000, DriverOrder 0000,0001 and absent BootNext passed. No Dell reboot or
+physical display/touch acceptance was performed. Build packages were removed.
+Tiling controls are still small for touch; app styling, Editor clipboard,
+accessibility and X11 security limits remain. See
+`docs/heurism-modern-workspace.md`.
+
 On 2026-10-10 C desktop 0.8 added a Spaces view with four visual workspace
 cards, window counts and approximate geometry, clickable cross-space window
 activation, panel occupancy dots, Super+O and keyboard navigation. The VM

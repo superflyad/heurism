@@ -38,6 +38,7 @@ enum action { NONE, SHOW_WORKSPACE, SHOW_MENU, SHOW_SPACES, SHOW_OVERVIEW, SHOW_
               OPEN_LOCAL,
               LAUNCH_BROWSER, LAUNCH_TERMINAL, LAUNCH_KEYBOARD, TOGGLE_THEME,
               SWITCH_TASK, SWITCH_WORKSPACE, MOVE_WINDOW_WORKSPACE,
+              TILE_TASK_LEFT, TILE_TASK_RIGHT,
               MINIMIZE_TASKS, ADMIN_CONSOLE, RESTART_VM, SHUT_DOWN_VM,
               BRIGHTER, DIMMER, TAP_TOGGLE, SCROLL_TOGGLE, SPEED_UP, SPEED_DOWN,
               WIFI_SCAN, WIFI_SELECT, WIFI_CONNECT, WIFI_PASSWORD,
@@ -61,6 +62,9 @@ struct desktop {
     Atom type_atom, desktop_atom, dock_atom, state_atom, skip_taskbar_atom;
     Atom strut_atom, client_list_atom, active_atom;
     Atom current_workspace_atom, workspace_count_atom, window_workspace_atom;
+    Atom moveresize_atom, supported_atom, workarea_atom;
+    Atom frame_extents_atom;
+    Atom maximized_horz_atom, maximized_vert_atom;
     struct hit hits[MAX_HITS];
     int hit_count;
     struct task tasks[MAX_TASKS];
@@ -733,12 +737,25 @@ static void render_spaces(struct desktop *d) {
             if (listed < 4) {
                 int list_x = map_x + map_width + 16;
                 int list_y = map_y + listed * 33;
+                int list_width = x + card_width - 18 - list_x;
                 rounded(d, d->background, list_x, list_y,
-                        x + card_width - 18 - list_x, 29, 5, 41, 62, 80);
+                        list_width, 29, 5, 41, 62, 80);
                 label(d, d->background, list_x + 9, list_y + 20,
                       d->font_small, item->title, 227, 239, 245);
                 hit(d, d->background, list_x, list_y,
-                    x + card_width - 18 - list_x, 29, SWITCH_TASK, task);
+                    list_width - 62, 29, SWITCH_TASK, task);
+                int left_x = list_x + list_width - 59;
+                rounded(d, d->background, left_x, list_y + 2,
+                        27, 25, 4, 60, 88, 105);
+                rounded(d, d->background, left_x + 30, list_y + 2,
+                        27, 25, 4, 60, 88, 105);
+                label(d, d->background, left_x + 8, list_y + 19,
+                      d->font_small, "‹", 235, 246, 250);
+                label(d, d->background, left_x + 38, list_y + 19,
+                      d->font_small, "›", 235, 246, 250);
+                hit(d, d->background, left_x, list_y, 27, 29, TILE_TASK_LEFT, task);
+                hit(d, d->background, left_x + 30, list_y, 27, 29,
+                    TILE_TASK_RIGHT, task);
                 listed++;
             }
         }
@@ -747,7 +764,7 @@ static void render_spaces(struct desktop *d) {
                   d->font_small, "Ready for work", 140, 163, 182);
     }
     label(d, d->background, 36, d->height - 19, d->font_small,
-          "Super+1-4 switch directly   ·   Esc closes", 145, 171, 190);
+          "Click a title to focus   ·   ‹ › tile   ·   Esc closes", 145, 171, 190);
 }
 
 static const char *bios_name(int index) {
@@ -1087,7 +1104,8 @@ static void redraw(struct desktop *d) {
     d->hit_count = 0;
     render_page(d);
     if (d->notice[0]) label(d, d->background, 58,
-                             d->power_mode || d->quick_mode ? d->height - 28 : d->height - 155,
+                             d->power_mode || d->quick_mode || d->spaces_mode ?
+                                 d->height - 28 : d->height - 155,
                              d->font_small,
                              d->notice, 80, 225, 190);
     if (!d->settings_mode) {
@@ -1257,6 +1275,145 @@ static void activate_task(struct desktop *d, int index) {
         activate_window(d, d->tasks[index].window);
 }
 
+static bool wm_supports(struct desktop *d, Atom feature) {
+    Atom actual;
+    int format;
+    unsigned long count, remaining;
+    unsigned char *data = NULL;
+    bool found = false;
+    if (XGetWindowProperty(d->display, RootWindow(d->display, d->screen),
+                           d->supported_atom, 0, 256, False, XA_ATOM,
+                           &actual, &format, &count, &remaining, &data) == Success &&
+        actual == XA_ATOM && format == 32 && data)
+        for (unsigned long i = 0; i < count; i++)
+            if (((Atom *)data)[i] == feature) found = true;
+    if (data) XFree(data);
+    return found;
+}
+
+static bool workspace_area(struct desktop *d, unsigned workspace,
+                           int *x, int *y, int *width, int *height) {
+    Atom actual;
+    int format;
+    unsigned long count, remaining;
+    unsigned char *data = NULL;
+    bool valid = false;
+    if (XGetWindowProperty(d->display, RootWindow(d->display, d->screen),
+                           d->workarea_atom, 0, 32, False, XA_CARDINAL,
+                           &actual, &format, &count, &remaining, &data) == Success &&
+        actual == XA_CARDINAL && format == 32 &&
+        count >= 4UL * (workspace + 1) && data) {
+        unsigned long *area = ((unsigned long *)data) + 4 * workspace;
+        if (area[0] < (unsigned long)d->screen_width &&
+            area[1] < (unsigned long)d->screen_height &&
+            area[2] > 100 && area[2] <= (unsigned long)d->screen_width &&
+            area[3] > 100 && area[3] <= (unsigned long)d->screen_height &&
+            area[0] + area[2] <= (unsigned long)d->screen_width &&
+            area[1] + area[3] <= (unsigned long)d->screen_height) {
+            *x = (int)area[0]; *y = (int)area[1];
+            *width = (int)area[2]; *height = (int)area[3];
+            valid = true;
+        }
+    }
+    if (data) XFree(data);
+    return valid;
+}
+
+static bool window_frame_extents(struct desktop *d, Window window,
+                                 int *left, int *right, int *top, int *bottom) {
+    Atom actual;
+    int format;
+    unsigned long count, remaining;
+    unsigned char *data = NULL;
+    bool valid = false;
+    if (XGetWindowProperty(d->display, window, d->frame_extents_atom,
+                           0, 4, False, XA_CARDINAL, &actual, &format,
+                           &count, &remaining, &data) == Success &&
+        actual == XA_CARDINAL && format == 32 && count == 4 && data) {
+        unsigned long *edges = (unsigned long *)data;
+        if (edges[0] <= 128 && edges[1] <= 128 &&
+            edges[2] <= 128 && edges[3] <= 128) {
+            *left = (int)edges[0]; *right = (int)edges[1];
+            *top = (int)edges[2]; *bottom = (int)edges[3];
+            valid = true;
+        }
+    }
+    if (data) XFree(data);
+    return valid;
+}
+
+static bool tile_task(struct desktop *d, int index, bool right) {
+    if (index < 0 || index >= d->task_count ||
+        !wm_supports(d, d->moveresize_atom)) {
+        snprintf(d->notice, sizeof d->notice, "Window tiling is unavailable");
+        return false;
+    }
+    struct task *task = &d->tasks[index];
+    unsigned workspace = task->workspace == UINT32_MAX ?
+                         d->current_workspace : task->workspace;
+    int area_x, area_y, area_width, area_height;
+    if (workspace >= d->workspace_count ||
+        !workspace_area(d, workspace, &area_x, &area_y,
+                        &area_width, &area_height)) {
+        snprintf(d->notice, sizeof d->notice, "Window area is unavailable");
+        return false;
+    }
+    int left, edge_right, top, bottom;
+    if (!window_frame_extents(d, task->window,
+                              &left, &edge_right, &top, &bottom)) {
+        snprintf(d->notice, sizeof d->notice, "Window frame is unavailable");
+        return false;
+    }
+    int margin = 12, gap = 12;
+    int half_width = (area_width - margin * 2 - gap) / 2;
+    int frame_height = area_height - margin * 2;
+    int target_width = half_width - left - edge_right;
+    int target_height = frame_height - top - bottom;
+    if (target_width < 100 || target_height < 100) {
+        snprintf(d->notice, sizeof d->notice, "Window area is too small");
+        return false;
+    }
+    XSizeHints hints;
+    long supplied;
+    if (XGetWMNormalHints(d->display, task->window, &hints, &supplied) &&
+        (hints.flags & PMinSize) &&
+        (hints.min_width > target_width || hints.min_height > target_height)) {
+        snprintf(d->notice, sizeof d->notice,
+                 "This window needs more room than half the screen");
+        return false;
+    }
+    Window root = RootWindow(d->display, d->screen);
+    XEvent state = {0};
+    state.xclient.type = ClientMessage;
+    state.xclient.window = task->window;
+    state.xclient.message_type = d->state_atom;
+    state.xclient.format = 32;
+    state.xclient.data.l[0] = 0;
+    state.xclient.data.l[1] = (long)d->maximized_horz_atom;
+    state.xclient.data.l[2] = (long)d->maximized_vert_atom;
+    state.xclient.data.l[3] = 2;
+    XSendEvent(d->display, root, False,
+               SubstructureRedirectMask | SubstructureNotifyMask, &state);
+    XEvent move = {0};
+    move.xclient.type = ClientMessage;
+    move.xclient.window = task->window;
+    move.xclient.message_type = d->moveresize_atom;
+    move.xclient.format = 32;
+    move.xclient.data.l[0] = StaticGravity | (15L << 8) | (2L << 12);
+    move.xclient.data.l[1] = area_x + margin + (right ? half_width + gap : 0) + left;
+    move.xclient.data.l[2] = area_y + margin + top;
+    move.xclient.data.l[3] = target_width;
+    move.xclient.data.l[4] = target_height;
+    if (!XSendEvent(d->display, root, False,
+                    SubstructureRedirectMask | SubstructureNotifyMask, &move)) {
+        snprintf(d->notice, sizeof d->notice, "Window tiling request failed");
+        return false;
+    }
+    activate_window(d, task->window);
+    XSync(d->display, False);
+    return true;
+}
+
 static void switch_workspace(struct desktop *d, int index) {
     if (index < 0 || (unsigned)index >= d->workspace_count) return;
     Window root = RootWindow(d->display, d->screen);
@@ -1314,6 +1471,12 @@ static void run_action(struct desktop *d, enum action action, int index) {
     if (d->spaces_mode) {
         if (action == SWITCH_WORKSPACE) switch_workspace(d, index);
         else if (action == SWITCH_TASK) activate_task(d, index);
+        else if (action == TILE_TASK_LEFT || action == TILE_TASK_RIGHT) {
+            if (!tile_task(d, index, action == TILE_TASK_RIGHT)) {
+                redraw(d);
+                return;
+            }
+        }
         else if (action != SHOW_WORKSPACE) return;
         XCloseDisplay(d->display);
         exit(0);
@@ -1699,6 +1862,12 @@ static bool setup_x(struct desktop *d) {
     d->current_workspace_atom = XInternAtom(d->display, "_NET_CURRENT_DESKTOP", False);
     d->workspace_count_atom = XInternAtom(d->display, "_NET_NUMBER_OF_DESKTOPS", False);
     d->window_workspace_atom = XInternAtom(d->display, "_NET_WM_DESKTOP", False);
+    d->moveresize_atom = XInternAtom(d->display, "_NET_MOVERESIZE_WINDOW", False);
+    d->supported_atom = XInternAtom(d->display, "_NET_SUPPORTED", False);
+    d->workarea_atom = XInternAtom(d->display, "_NET_WORKAREA", False);
+    d->frame_extents_atom = XInternAtom(d->display, "_NET_FRAME_EXTENTS", False);
+    d->maximized_horz_atom = XInternAtom(d->display, "_NET_WM_STATE_MAXIMIZED_HORZ", False);
+    d->maximized_vert_atom = XInternAtom(d->display, "_NET_WM_STATE_MAXIMIZED_VERT", False);
     Window root = RootWindow(d->display, d->screen);
     int window_x = d->settings_mode ? (screen_width - d->width) / 2 : 0;
     int window_y = d->settings_mode ? (screen_height - d->height) / 2 : 0;

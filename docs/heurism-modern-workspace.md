@@ -286,3 +286,50 @@ unverified.
 The space view makes open work visible, but the desktop still needs better
 window tiling, a shared app visual system, selection/clipboard in Editor,
 accessibility controls and a coherent lock screen.
+
+## Window placement, 2026-10-10
+
+Each window row in Spaces now offers left and right placement. The C desktop
+reads Xfwm's EWMH work area and the window's frame extents, rejects windows
+whose declared minimum size exceeds a half-screen zone, then requests the
+move and resize through the window manager. The panel, dock and window chrome
+remain inside their reserved areas. Xfwm continues to manage focus and
+workspace state; the shell has no privileged window-control service.
+
+The isolated VM test moved a terminal across spaces, placed it on both sides,
+placed Editor beside it, and asserted frame clearance above the dock at
+1280×800. The rendered pair is `build/prime-vm/tiled-pair.png`. The Dell
+isolated 1920×1080 test verified a terminal fit above its dock on display
+`:93`; it left the active `:0` session untouched. Both complete assembly
+gates passed, including the shell, control, apps and sealed-release checks.
+
+The VM installer activated
+`/opt/heurism/native/releases/heurism-os-20261010T180247Z-67108`. A checked
+reboot returned fresh boot `6ab26f74-b594-4d59-8a6b-d8561772dde1` with
+release verification, UID-1000 desktop, root SSH, watch and control healthy.
+Checkpoint `Heurism-window-tiling-20261010` is
+`bd7b3dfd-8d8f-46d0-a232-d47b933c17d1`. The Dell guarded installer
+activated `/opt/heurism/native/releases/heurism-os-dell-20261010T180235Z-28708`
+on the existing boot `edb102d9-25c6-409c-aa17-181fea3eaf41`. Its live
+release, services and eight protected hashes passed after build packages
+were removed. `BootCurrent` remained `0005`, `BootOrder` `0005,0000`,
+`DriverOrder` `0000,0001`, and BootNext absent. No Dell reboot or physical
+touch acceptance was performed.
+
+The next target is a consistent interaction system across C apps: larger
+touch controls, visible keyboard focus, Editor selection and clipboard,
+Unicode search input, accessible settings and a coherent lock screen. The
+current 27-pixel tiling buttons are too small for a final touch interface.
+The shared X11 UID-1000 session and unencrypted disk remain security limits.
+
+Recent desktop direction reinforces this sequence. Apple has expanded
+Spotlight actions and desktop personalization; Windows has begun testing actions
+directly in Search and describes explicit containment, identity and consent
+for agents; KDE supports per-workspace tile layouts; GNOME 50 adds reduced
+motion and stronger screen-reader behavior. Heurism should adopt the useful
+interaction ideas while keeping actions transparent and user initiated:
+[Apple](https://www.apple.com/ph/newsroom/2025/06/macos-tahoe-26-makes-the-mac-more-capable-productive-and-intelligent-than-ever/),
+[Windows Search](https://blogs.windows.com/windows-insider/2026/10/07/from-searching-to-doing-building-a-faster-more-streamlined-windows-search/),
+[Windows security](https://blogs.windows.com/windowsexperience/2026/10/07/building-windows-for-hybrid-intelligence/),
+[KDE](https://kde.org/gl/announcements/plasma/6/6.4.0/),
+[GNOME](https://release.gnome.org/50/).

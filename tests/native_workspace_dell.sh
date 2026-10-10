@@ -123,6 +123,21 @@ xdotool windowactivate --sync "$spaces"
 xdotool key Escape
 sleep 1
 if xdotool search --name '^Heurism Spaces$' >/dev/null 2>&1; then exit 1; fi
+xdotool key --clearmodifiers super+o
+sleep 1
+spaces=$(xdotool search --name '^Heurism Spaces$' | tail -n 1)
+test -n "$spaces"
+xdotool mousemove --window "$spaces" 1000 238 click 1
+sleep 2
+geometry=$(xdotool getwindowgeometry --shell "$terminal")
+x=$(printf '%s\n' "$geometry" | sed -n 's/^X=//p')
+y=$(printf '%s\n' "$geometry" | sed -n 's/^Y=//p')
+width=$(printf '%s\n' "$geometry" | sed -n 's/^WIDTH=//p')
+height=$(printf '%s\n' "$geometry" | sed -n 's/^HEIGHT=//p')
+test "$x" -ge 0 && test "$x" -lt 100
+test "$width" -gt 800 && test "$width" -lt 1000
+test "$y" -ge 82 && test $((y + height + 5)) -le 974
+xprop -root _NET_CURRENT_DESKTOP | grep -q ' = 1$'
 xdotool mousemove 1000 1028 click 1
 sleep 1
 xprop -root _NET_CURRENT_DESKTOP | grep -q ' = 1$'
@@ -146,4 +161,4 @@ rc-service heurism-desktop status >/dev/null
 rc-service heurism-control status >/dev/null
 rc-service companion-watch status >/dev/null
 rc-service sshd status >/dev/null
-echo 'Dell-size isolated C Spaces view, four-workspace switching, window move, quick controls, local file search and terminal passed; :0 unchanged'
+echo 'Dell-size isolated C Spaces view, four-workspace switching, window move/tiling, quick controls, local file search and terminal passed; :0 unchanged'
