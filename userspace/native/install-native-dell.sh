@@ -34,6 +34,8 @@ if [ "${1:-}" = assemble ]; then
     sh "$stage/native_shell_jobs.sh" "$stage/heurism-sh" 9>&-
     sh "$stage/native_control_dell.sh" 9>&-
     sh "$stage/native_desktop_dell.sh" 9>&-
+    sh "$stage/native_workspace_dell.sh" "$stage/heurism-desktop" \
+        "$stage/heurism-xfwm4.tar.gz" 9>&-
     sh "$stage/native_apps_dell.sh" 9>&-
     name=heurism-os-dell-$(date -u +%Y%m%dT%H%M%SZ)-$$
     release=$root/releases/$name

@@ -30,6 +30,9 @@ appearance, Settings, Network, Lock and checked Power. See
 [the quick-controls evidence](../../docs/heurism-quick-controls.md).
 The Dell still defaults to Alpine Xfce 4.20 with Thunar and Mousepad. In that
 recovery session, Heurism Settings and the C terminal have Xfce application launchers.
+The current C workspace also passed an isolated 1920x1080 X11 run on the Dell;
+the active session was not switched. See
+[the Dell workspace gate](../../docs/heurism-dell-workspace-gate.md).
 The top-right red power icon and Applications > System > Heurism Power open
 the C Power window for checked Restart and Shut down, each requiring a second
 click within ten seconds. The disabled Xfce Log Out menu entry is replaced in

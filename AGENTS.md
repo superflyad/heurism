@@ -1,5 +1,19 @@
 # Current product direction
 
+On 2026-10-10, Heurism desktop 0.6 from the sealed VM release was tested on
+the physical Dell inside a private 1920x1080 Xvfb :93 session with Xfwm4 and
+an X11 authorization cookie. The C workspace, quick controls with the Dell's
+real Ethernet address, launcher, terminal and Super+Space passed. Its VM and
+Dell binary SHA256 was
+ec404f0bbf1c0cff3639128507e9e5546865afca0b14cdecc97bc19ebe8e5e0e.
+The Dell boot ID, active release and production Xfce :0 session were unchanged;
+SSH, watch, C control and eight protected hashes remained healthy. This is an
+isolated display-size gate, not physical screen/touch or full-session proof.
+The Dell's installed release predates the Heurism Xfwm theme and new session
+scripts. See docs/heurism-dell-workspace-gate.md. Assemble/test a complete Dell
+candidate before changing desktop mode; preserve root management and the SSD
+recovery path. Do not reboot remotely without local recovery readiness.
+
 On 2026-10-10 the VM C dock's connection indicator gained Heurism quick
 controls: actual Ethernet address, honest virtual-audio status, checked C
 appearance, Settings, Network, Lock and Power routes. The active sealed release
