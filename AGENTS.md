@@ -1,5 +1,24 @@
 # Current product direction
 
+On 2026-10-10 the VM C dock's connection indicator gained Heurism quick
+controls: actual Ethernet address, honest virtual-audio status, checked C
+appearance, Settings, Network, Lock and Power routes. The active sealed release
+is `/opt/heurism/native/releases/heurism-os-20261010T152041Z-51720`.
+The tracked Xvfb interaction test passed dock opening, panel reuse, appearance
+change/restoration, Settings, Network, Power and Escape. A second tracked
+isolated test clicked Quick Lock and verified Xfce's PAM screensaver active.
+Both passed again on the installed release after checked C reboot to fresh boot
+`e73fbbb1-9e62-4b4a-a528-04518fc8a8cf`. The C desktop, theme, release,
+SSH/watch/control were healthy; the original Night preference was restored and
+build packages removed. The prechange checkpoint is
+`Heurism-before-quick-controls-20261010`, UUID
+`b3803c66-d1d6-4f8c-8a39-0ec365da9b2b`; the ready checkpoint is
+`Heurism-quick-controls-ready-20261010`, UUID
+`749dc961-e3fa-47bf-87d3-ae5e9b5c50c7`. See
+`docs/heurism-quick-controls.md` and
+`build/prime-vm/heurism-quick-controls.png`. The Dell remains on Xfce and
+was not changed. The full distinct desktop goal remains open.
+
 On 2026-10-10 the VM C launcher gained live open-window search and switching.
 The tracked isolated Xvfb test opened C Terminal and Files, searched for the
 running Terminal from Files, and verified that Enter made Terminal active.

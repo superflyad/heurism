@@ -28,7 +28,8 @@
 
 enum page { WORKSPACE, MENU, OVERVIEW, SETTINGS, DEVICE, NETWORK, SOUND };
 enum action { NONE, SHOW_WORKSPACE, SHOW_MENU, SHOW_OVERVIEW, SHOW_SETTINGS,
-              SHOW_DEVICE, SHOW_NETWORK, SHOW_SOUND, SHOW_POWER, LAUNCH_FILES, LAUNCH_EDITOR,
+              SHOW_DEVICE, SHOW_NETWORK, SHOW_SOUND, SHOW_POWER, SHOW_QUICK,
+              LOCK_DESKTOP, LAUNCH_FILES, LAUNCH_EDITOR,
               LAUNCH_BROWSER, LAUNCH_TERMINAL, LAUNCH_KEYBOARD, TOGGLE_THEME,
               SWITCH_TASK, MINIMIZE_TASKS, ADMIN_CONSOLE, RESTART_VM, SHUT_DOWN_VM,
               BRIGHTER, DIMMER, TAP_TOGGLE, SCROLL_TOGGLE, SPEED_UP, SPEED_DOWN,
@@ -68,6 +69,7 @@ struct desktop {
     bool settings_mode;
     bool power_mode;
     bool launcher_mode;
+    bool quick_mode;
     char launcher_query[64];
     int launcher_selected, launcher_offset;
     enum action pending_power;
@@ -123,7 +125,8 @@ static void fill(struct desktop *d, Window window, int x, int y, int width, int 
 
 static void label(struct desktop *d, Window window, int x, int y, XftFont *font,
                   const char *text, unsigned red, unsigned green, unsigned blue) {
-    bool light_page = d->light && window == d->background &&
+    bool light_page = d->light && !d->launcher_mode && !d->quick_mode &&
+                      window == d->background &&
                       (d->settings_mode || d->page != WORKSPACE);
     if (light_page && red == 239 && green == 245 && blue == 255) {
         red = 24; green = 42; blue = 62;
@@ -145,7 +148,8 @@ static void hit(struct desktop *d, Window window, int x, int y, int width, int h
 
 static void button(struct desktop *d, Window window, int x, int y, int width, int height,
                    const char *text, enum action action, int index, bool accent) {
-    bool light_button = d->light && window == d->background &&
+    bool light_button = d->light && !d->launcher_mode && !d->quick_mode &&
+                        window == d->background &&
                         (d->settings_mode || d->page != WORKSPACE);
     if (accent) fill(d, window, x, y, width, height, 80, 225, 190);
     else fill(d, window, x, y, width, height, light_button ? 218 : 29,
@@ -369,8 +373,8 @@ static void render_dock(struct desktop *d) {
     localtime_r(&now, &local);
     char clock_text[16];
     strftime(clock_text, sizeof clock_text, "%H:%M", &local);
-    label(d, d->dock, d->dock_width - 205, 39, d->font_small,
-          d->address[0] ? "Connected" : "Offline", 157, 176, 198);
+    button(d, d->dock, d->dock_width - 216, 10, 140, 46,
+           d->address[0] ? "Connected  >" : "Offline  >", SHOW_QUICK, 0, false);
     label(d, d->dock, d->dock_width - 60, 39, d->font_small, clock_text, 239, 245, 255);
 }
 
@@ -553,8 +557,44 @@ static void render_launcher(struct desktop *d) {
     label(d, d->background, 32, d->height - 25, d->font_small, footer, 157, 176, 198);
 }
 
+static void render_quick(struct desktop *d) {
+    fill(d, d->background, 0, 0, d->width, d->height, 8, 20, 31);
+    fill(d, d->background, 0, 0, 5, d->height, 77, 211, 194);
+    fill(d, d->background, 24, 23, 34, 34, 77, 211, 194);
+    label(d, d->background, 34, 48, d->font_body, "H", 8, 32, 39);
+    label(d, d->background, 73, 47, d->font_small, "HEURISM  /  QUICK CONTROLS", 77, 211, 194);
+    button(d, d->background, d->width - 96, 20, 72, 39,
+           "Close", SHOW_WORKSPACE, 0, false);
+
+    fill(d, d->background, 24, 82, d->width - 48, 122, 19, 43, 56);
+    fill(d, d->background, 24, 82, d->width - 48, 2, 215, 168, 101);
+    label(d, d->background, 42, 111, d->font_small,
+          d->address[0] ? "NETWORK  /  CONNECTED" : "NETWORK  /  OFFLINE",
+          215, 168, 101);
+    label(d, d->background, 42, 149, d->font_body,
+          d->address[0] ? d->address : "No Ethernet address", 239, 245, 255);
+    label(d, d->background, 42, 182, d->font_small,
+          d->dell ? "Speaker controls in Settings" : "Virtual audio; no physical speakers",
+          157, 176, 198);
+
+    label(d, d->background, 24, 245, d->font_small,
+          "APPEARANCE", 77, 211, 194);
+    button(d, d->background, 24, 260, d->width - 48, 51,
+           d->light ? "Switch to Night" : "Switch to Light", TOGGLE_THEME, 0, false);
+    label(d, d->background, 24, 354, d->font_small,
+          "SYSTEM", 77, 211, 194);
+    int half = (d->width - 60) / 2;
+    button(d, d->background, 24, 370, half, 49, "Settings", SHOW_SETTINGS, 0, false);
+    button(d, d->background, 36 + half, 370, half, 49,
+           "Network", SHOW_NETWORK, 0, false);
+    button(d, d->background, 24, 435, half, 49, "Lock", LOCK_DESKTOP, 0, false);
+    button(d, d->background, 36 + half, 435, half, 49,
+           "Power", SHOW_POWER, 0, false);
+}
+
 static void render_page(struct desktop *d) {
     if (d->launcher_mode) { render_launcher(d); return; }
+    if (d->quick_mode) { render_quick(d); return; }
     if (d->page == WORKSPACE && !d->settings_mode && !d->power_mode) {
         render_workspace(d);
         return;
@@ -725,7 +765,7 @@ static void redraw(struct desktop *d) {
     d->hit_count = 0;
     render_page(d);
     if (d->notice[0]) label(d, d->background, 58,
-                             d->power_mode ? d->height - 38 : d->height - 155,
+                             d->power_mode || d->quick_mode ? d->height - 28 : d->height - 155,
                              d->font_small,
                              d->notice, 80, 225, 190);
     if (!d->settings_mode) render_dock(d);
@@ -850,7 +890,30 @@ static void activate_task(struct desktop *d, int index) {
         activate_window(d, d->tasks[index].window);
 }
 
+static void open_panel(struct desktop *d, const char *selection_name, const char *argument) {
+    Atom selection = XInternAtom(d->display, selection_name, False);
+    Window owner = XGetSelectionOwner(d->display, selection);
+    XWindowAttributes attributes;
+    if (owner && XGetWindowAttributes(d->display, owner, &attributes) &&
+        attributes.map_state == IsViewable) activate_window(d, owner);
+    else launch_self(d, argument);
+}
+
 static void run_action(struct desktop *d, enum action action, int index) {
+    if (d->quick_mode) {
+        if (action == SHOW_WORKSPACE) { XCloseDisplay(d->display); exit(0); }
+        const char *argument = action == SHOW_SETTINGS ? "--settings" :
+                               action == SHOW_NETWORK ? "--network" :
+                               action == SHOW_POWER ? "--power" : NULL;
+        if (argument || action == LOCK_DESKTOP) {
+            d->notice[0] = 0;
+            if (argument) launch_self(d, argument);
+            else launch(d, "/usr/bin/xfce4-screensaver-command", "--lock");
+            if (!d->notice[0]) { XCloseDisplay(d->display); exit(0); }
+            redraw(d);
+            return;
+        }
+    }
     if (d->launcher_mode) {
         d->notice[0] = 0;
         switch (action) {
@@ -880,22 +943,16 @@ static void run_action(struct desktop *d, enum action action, int index) {
         break;
     case SHOW_MENU:
         if (d->settings_mode) d->page = MENU;
-        else {
-            Atom selection = XInternAtom(d->display, "_HEURISM_LAUNCHER", False);
-            Window owner = XGetSelectionOwner(d->display, selection);
-            XWindowAttributes attributes;
-            if (owner && XGetWindowAttributes(d->display, owner, &attributes) &&
-                attributes.map_state == IsViewable) {
-                activate_window(d, owner);
-            } else launch_self(d, "--launcher");
-        }
+        else open_panel(d, "_HEURISM_LAUNCHER", "--launcher");
         break;
+    case SHOW_QUICK: open_panel(d, "_HEURISM_QUICK_PANEL", "--quick"); break;
     case SHOW_OVERVIEW: d->page = OVERVIEW; break;
     case SHOW_SETTINGS: d->page = SETTINGS; break;
     case SHOW_DEVICE: d->page = DEVICE; break;
     case SHOW_NETWORK: d->page = NETWORK; break;
     case SHOW_SOUND: if (d->dell) d->page = SOUND; break;
     case SHOW_POWER: launch_self(d, "--power"); break;
+    case LOCK_DESKTOP: launch(d, "/usr/bin/xfce4-screensaver-command", "--lock"); break;
     case LAUNCH_FILES: launch_native(d, "heurism-files"); break;
     case LAUNCH_EDITOR: launch_native(d, "heurism-editor"); break;
     case LAUNCH_BROWSER: launch(d, "/usr/bin/firefox", NULL); break;
@@ -1132,7 +1189,12 @@ static bool setup_x(struct desktop *d) {
     d->height = DisplayHeight(d->display, d->screen);
     int screen_width = d->width, screen_height = d->height;
     if (d->settings_mode) {
-        if (d->launcher_mode) {
+        if (d->quick_mode) {
+            if (d->width > 520) d->width = 520;
+            if (d->height > 540) d->height = 540;
+            if (d->width > screen_width - 40) d->width = screen_width - 40;
+            if (d->height > screen_height - 40) d->height = screen_height - 40;
+        } else if (d->launcher_mode) {
             if (d->width > 700) d->width = 700;
             if (d->height > 660) d->height = 660;
             if (d->width > screen_width - 40) d->width = screen_width - 40;
@@ -1160,15 +1222,20 @@ static bool setup_x(struct desktop *d) {
     d->client_list_atom = XInternAtom(d->display, "_NET_CLIENT_LIST", False);
     d->active_atom = XInternAtom(d->display, "_NET_ACTIVE_WINDOW", False);
     Window root = RootWindow(d->display, d->screen);
+    int window_x = d->settings_mode ? (screen_width - d->width) / 2 : 0;
+    int window_y = d->settings_mode ? (screen_height - d->height) / 2 : 0;
+    if (d->quick_mode) {
+        window_x = screen_width - d->width - 24;
+        window_y = screen_height - d->height - 94;
+        if (window_y < 20) window_y = 20;
+    }
     d->background = XCreateSimpleWindow(d->display, root,
-                                         d->settings_mode ? (screen_width - d->width) / 2 : 0,
-                                         d->settings_mode ? (screen_height - d->height) / 2 : 0,
+                                         window_x, window_y,
                                          (unsigned)d->width, (unsigned)d->height,
                                          0, 0, 0);
     if (d->settings_mode) {
         XSizeHints hints = {.flags = PPosition | PSize | PMinSize | PMaxSize,
-                            .x = (screen_width - d->width) / 2,
-                            .y = (screen_height - d->height) / 2,
+                            .x = window_x, .y = window_y,
                             .width = d->width, .height = d->height,
                             .min_width = d->width, .min_height = d->height,
                             .max_width = d->width, .max_height = d->height};
@@ -1178,13 +1245,16 @@ static bool setup_x(struct desktop *d) {
                                    (unsigned)d->dock_width, 68, 0, 0, 0);
     XStoreName(d->display, d->background,
                d->launcher_mode ? "Heurism Launcher" :
+               d->quick_mode ? "Heurism Quick Controls" :
                d->power_mode ? "Heurism Power" :
+               d->settings_mode && d->page == NETWORK ? "Heurism Network" :
+               d->settings_mode && d->page == OVERVIEW ? "Heurism System" :
                d->settings_mode ? "Heurism Settings" : "Heurism desktop");
     XStoreName(d->display, d->dock, "Heurism dock");
     if (!d->settings_mode) {
         set_window_type(d, d->background, d->desktop_atom);
         set_window_type(d, d->dock, d->dock_atom);
-    } else if (d->launcher_mode)
+    } else if (d->launcher_mode || d->quick_mode)
         XChangeProperty(d->display, d->background, d->state_atom, XA_ATOM, 32,
                         PropModeReplace, (unsigned char *)&d->skip_taskbar_atom, 1);
     long strut[4] = {0, 0, 0, 84};
@@ -1205,8 +1275,9 @@ static bool setup_x(struct desktop *d) {
     XMapWindow(d->display, d->background);
     if (!d->settings_mode) XMapRaised(d->display, d->dock);
     XSync(d->display, False);
-    if (d->launcher_mode) {
-        Atom selection = XInternAtom(d->display, "_HEURISM_LAUNCHER", False);
+    if (d->launcher_mode || d->quick_mode) {
+        Atom selection = XInternAtom(d->display,
+            d->launcher_mode ? "_HEURISM_LAUNCHER" : "_HEURISM_QUICK_PANEL", False);
         XSetSelectionOwner(d->display, selection, d->background, CurrentTime);
         activate_window(d, d->background);
         XFlush(d->display);
@@ -1259,7 +1330,7 @@ static int show_home(void) {
 int main(int argc, char **argv) {
     setlocale(LC_ALL, "");
     if (argc == 2 && !strcmp(argv[1], "--version")) {
-        puts("Heurism desktop 0.5 (C/X11/Xft)"); return 0;
+        puts("Heurism desktop 0.6 (C/X11/Xft)"); return 0;
     }
     if (argc == 2 && !strcmp(argv[1], "--home")) return show_home();
     struct desktop d = {.page = WORKSPACE, .control_socket = DEFAULT_SOCKET,
@@ -1271,6 +1342,9 @@ int main(int argc, char **argv) {
         d.settings_mode = true;
         d.launcher_mode = true;
         d.page = MENU;
+    } else if (argc == 2 && !strcmp(argv[1], "--quick")) {
+        d.settings_mode = true;
+        d.quick_mode = true;
     } else if (argc == 2 && !strcmp(argv[1], "--overview")) {
         d.settings_mode = true;
         d.page = OVERVIEW;
@@ -1282,7 +1356,7 @@ int main(int argc, char **argv) {
         d.power_mode = true;
         d.page = MENU;
     } else if (argc == 3 && !strcmp(argv[1], "--socket")) d.control_socket = argv[2];
-    else if (argc != 1) return fprintf(stderr, "usage: heurism-desktop [--settings|--launcher|--overview|--network|--power|--socket path]\n"), 2;
+    else if (argc != 1) return fprintf(stderr, "usage: heurism-desktop [--settings|--launcher|--quick|--overview|--network|--power|--socket path]\n"), 2;
     signal(SIGCHLD, SIG_IGN);
     if (!setup_x(&d)) return fprintf(stderr, "heurism-desktop: X display unavailable\n"), 1;
     if (!d.settings_mode) install_launcher_shortcut(&d);
@@ -1346,6 +1420,10 @@ int main(int argc, char **argv) {
                         }
                     }
                     redraw(&d);
+                    continue;
+                }
+                if (d.quick_mode) {
+                    if (key == XK_Escape) run_action(&d, SHOW_WORKSPACE, 0);
                     continue;
                 }
                 if (d.page == NETWORK && d.password_focus) {

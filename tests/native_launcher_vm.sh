@@ -6,7 +6,11 @@ test "$(cat /sys/class/dmi/id/product_name)" = 'Virtual Machine'
 release=$(readlink -f "${1:-/opt/heurism/native/current}")
 case "$release" in /opt/heurism/native/releases/*) ;; *) exit 1 ;; esac
 "$release/heurism-release" verify "$release" >/dev/null
-for program in Xvfb xfwm4 xfconf-query xdotool xprop xwd dbus-run-session; do
+saved_theme=$("$release/heurismctl" status |
+    sed -n 's/.*"theme":"\([^"]*\)".*/\1/p')
+case "$saved_theme" in light|night) ;; *) exit 1 ;; esac
+for program in Xvfb xfwm4 xfconf-query xdotool xprop xwd dbus-run-session \
+    xfce4-screensaver-command; do
     command -v "$program" >/dev/null
 done
 test ! -e /tmp/.X91-lock
@@ -22,6 +26,7 @@ xvfb=$!
 wm=0
 desktop=0
 cleanup() {
+    "$release/heurismctl" theme "\"$saved_theme\"" >/dev/null 2>&1 || true
     test "$desktop" = 0 || kill "$desktop" 2>/dev/null || true
     test "$wm" = 0 || kill "$wm" 2>/dev/null || true
     for environment in /proc/[0-9]*/environ; do
@@ -90,6 +95,47 @@ xdotool key Return
 sleep 2
 test "$(xdotool getactivewindow)" = "$terminal"
 if xdotool search --name '^Heurism Launcher$' >/dev/null 2>&1; then exit 1; fi
+xdotool mousemove 1000 748 click 1
+sleep 1
+quick=$(xdotool search --name '^Heurism Quick Controls$' | tail -n 1)
+test -n "$quick"
+xprop -id "$quick" _NET_WM_STATE | grep -q '_NET_WM_STATE_SKIP_TASKBAR'
+xdotool mousemove 1000 748 click 1
+sleep 1
+test "$(xdotool search --name '^Heurism Quick Controls$' | wc -l)" = 1
+xwd -root -silent -out "$work/quick-controls.xwd"
+if [ "$saved_theme" = night ]; then opposite=light; else opposite=night; fi
+xdotool mousemove --window "$quick" 160 285 click 1
+sleep 2
+current_theme=$("$release/heurismctl" status |
+    sed -n 's/.*"theme":"\([^"]*\)".*/\1/p')
+test "$current_theme" = "$opposite"
+xwd -root -silent -out "$work/quick-controls-toggled.xwd"
+"$release/heurismctl" theme "\"$saved_theme\"" >/dev/null
+sleep 1
+xdotool mousemove --window "$quick" 80 395 click 1
+sleep 2
+xdotool search --name '^Heurism Settings$' >/dev/null
+if xdotool search --name '^Heurism Quick Controls$' >/dev/null 2>&1; then exit 1; fi
+xdotool mousemove 1000 748 click 1
+sleep 1
+quick=$(xdotool search --name '^Heurism Quick Controls$' | tail -n 1)
+xdotool mousemove --window "$quick" 365 395 click 1
+sleep 2
+xdotool search --name '^Heurism Network$' >/dev/null
+xdotool mousemove 1000 748 click 1
+sleep 1
+quick=$(xdotool search --name '^Heurism Quick Controls$' | tail -n 1)
+xdotool mousemove --window "$quick" 365 460 click 1
+sleep 2
+xdotool search --name '^Heurism Power$' >/dev/null
+xdotool mousemove 1000 748 click 1
+sleep 1
+quick=$(xdotool search --name '^Heurism Quick Controls$' | tail -n 1)
+xdotool windowactivate --sync "$quick"
+xdotool key Escape
+sleep 1
+if xdotool search --name '^Heurism Quick Controls$' >/dev/null 2>&1; then exit 1; fi
 for action in settings power; do
     xdotool mousemove 180 748 click 1
     sleep 1
@@ -108,4 +154,4 @@ xdotool windowactivate --sync "$launcher"
 xdotool key Escape
 sleep 1
 if xdotool search --name '^Heurism Launcher$' >/dev/null 2>&1; then exit 1; fi
-echo "C launcher dock, Super+Space, window switching and app actions passed; captures: $work/workspace.xwd $work/launcher.xwd $work/window-switch.xwd"
+echo "C launcher, window switching and quick controls passed; captures: $work/workspace.xwd $work/launcher.xwd $work/window-switch.xwd $work/quick-controls.xwd"
