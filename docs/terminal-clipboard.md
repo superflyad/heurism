@@ -2,10 +2,8 @@
 
 The C terminal owns its X11 window, clipboard selections and PTY. libvterm
 still parses display control sequences, and `heurism-sh` remains the command
-interpreter. These changes are active only in `CompanionDev`. The Dell later
-returned on a healthy fresh boot with its preceding scrollback release; these
-clipboard changes have not been installed there. No Dell command was run for
-the VM clipboard work.
+interpreter. The behavior was first proven in `CompanionDev` and was later
+installed on the Dell with the shell-completion release below.
 
 ## Behavior
 
@@ -67,6 +65,18 @@ headers and `xclip` were removed after verification. No VM cold boot has yet
 been run for this release.
 
 ## Remaining limits
+
+The Dell's current sealed release is
+`/opt/heurism/native/releases/heurism-os-dell-20261010T010017Z-7933` on boot
+`edb102d9-25c6-409c-aa17-181fea3eaf41`. Its terminal SHA256
+`50a640e14e6119ab0ae98e79cf5984ad6e260da07505254e1b71e860fd046a31`
+matches the VM-tested terminal. The actual Dell C terminal completed a filename
+through the PTY and remained healthy. A temporary independent X11 clipboard
+provider supplied a harmless command; Ctrl+Shift+V pasted it into the C
+terminal, and the expected file was created. The provider and its temporary
+package were removed afterward. Dell selection/copy, wide-character alignment
+and persistence through a Dell OS reboot have not been verified for this
+release. The root management and protected boot checks passed after activation.
 
 X11 PRIMARY and CLIPBOARD are shared with other clients in this UID-1000
 session; they do not protect secrets from untrusted applications. Selection

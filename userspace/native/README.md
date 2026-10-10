@@ -33,7 +33,7 @@ so its controls do not bypass Heurism's checked power path. See
 [xfce-bridge.md](../../docs/xfce-bridge.md).
 
 The active VM release is selected by `/opt/heurism/native/current` and is
-`/opt/heurism/native/releases/heurism-os-20261009T175459Z-69087`.
+`/opt/heurism/native/releases/heurism-os-20261010T005501Z-24116`.
 The separate fresh-image candidate uses `install-image-vm.sh` during image
 construction. It seals the compiled C binaries before first boot, installs
 the active C services and provides the Xfce-to-C-workspace startup fallback.
@@ -48,10 +48,11 @@ session can fall back to the sealed legacy UI if its own X startup fails. Root
 SSH and `companion-watch` run independently of the desktop. Do not deploy this
 VM installer on the Dell. The Dell has its own exact-DMI installer,
 `install-native-dell.sh`, and the active sealed release
-`/opt/heurism/native/releases/heurism-os-dell-20261009T155551Z-25889` before
-a checked reboot. Trusted SSH later returned on a fresh boot with that release
-and Xfce healthy; the cause of the unreachable interval remains unknown. See
-[the Dell terminal update record](../../docs/dell-terminal-20261009.md). The Dell
+`/opt/heurism/native/releases/heurism-os-dell-20261010T010017Z-7933`. It
+adds shell completion and the VM-tested clipboard terminal. The previous look
+release passed a checked Dell reboot; this newer release was activated without
+an OS reboot. See [the shell completion record](../../docs/shell-completion.md)
+and [the earlier Dell restart record](../../docs/dell-terminal-20261009.md). The Dell
 installer's `assemble` action does not switch services. `activate` changes
 only the desktop/control OpenRC scripts and native release symlink, with a
 20-second health gate and automatic restoration of the previous scripts and
@@ -73,15 +74,16 @@ after sealing. See [native-runtime.md](../../docs/native-runtime.md) for test
 evidence and remaining work.
 
 The shell has cursor editing, session-only command history, unquoted whole-word
-pathname globbing and VM-tested [interactive job control](../../docs/shell-job-control.md).
-It is smaller than a POSIX script shell: it lacks command substitution,
-functions and completion. BusyBox ash remains
-for startup and recovery scripts. The local terminal candidate retains up to
+pathname globbing, [bounded Tab completion](../../docs/shell-completion.md) and
+[interactive job control](../../docs/shell-job-control.md). It is smaller than
+a POSIX script shell: it lacks command substitution, functions and quoted
+completion. BusyBox ash remains for startup and recovery scripts. The terminal retains up to
 512 scrolled lines and supports Shift+PageUp/PageDown and mouse-wheel history
 navigation. The current VM release also shows the scrollback position in the
 window title and has [X11 text selection and clipboard](../../docs/terminal-clipboard.md).
-The Dell ran the preceding scrollback build before the reboot whose fresh boot
-was later verified.
+The Dell now runs the same sealed terminal binary. Live PTY completion and
+cross-app clipboard paste passed there; selection/copy remains a physical
+acceptance item.
 The VM includes a WenQuanYi fallback for tested CJK glyphs. Broader Unicode
 coverage, wide-character alignment, application mouse reporting and
 accessibility remain open.

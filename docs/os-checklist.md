@@ -23,9 +23,10 @@ test result and rollback path. See the [architecture](architecture.md),
 - [x] The C shell, PTY terminal, control socket and sealed release verifier
   exist. Bounded scrollback passed a live Dell session before a checked reboot;
   [pinned SSH and desktop health later returned](dell-terminal-20261009.md).
-  The later scrollback title cue is VM only.
-  [Selection, clipboard, clean close and a CJK font fallback](terminal-clipboard.md)
-  are also VM only.
+  The later scrollback title cue and
+  [clipboard terminal](terminal-clipboard.md) were installed on the Dell;
+  live UID-1000 PTY and cross-app paste passed. Dell selection/copy and a
+  reboot of this newer release remain open.
 - [x] A fresh C-first VM image booted, painted the desktop, passed fallback and
   checked power tests. The Dell's current release used its guarded installer
   and existing SSD boot path; its fresh boot, services, release and protected
@@ -44,17 +45,18 @@ Use the [Dell daily-use pass](dell-daily-use-pass.md) to record physical results
 - [ ] **Finish the C terminal.** The Dell returned healthy after its
   [scrollback release reboot](dell-terminal-20261009.md), but the recovery path
   from the unreachable interval is unknown. Promote the VM-tested
-  selection and clipboard safely, then complete large-paste behavior, Unicode
+  selection/copy physically, then complete large-paste behavior, Unicode
   display and wide-character checks, alternate-screen behavior and a visible
   scrollback cue. Verify real
   PTY input, resize, Ctrl+C and window close after a reboot.
 - [ ] **Define the C shell contract.** Decide explicitly what is interactive
-  Heurism shell behavior and what stays with BusyBox ash for scripts. Add
-  completion,
-  quoting/globbing consistency, environment handling and useful error status.
+  Heurism shell behavior and what stays with BusyBox ash for scripts.
+  [Bounded unquoted Tab completion](shell-completion.md) now passes VM reboot
+  and Dell PTY checks. Add quoted completion, quoting/globbing consistency,
+  environment handling and useful error status.
   [Foreground/background jobs, process groups and signals](shell-job-control.md)
-  passed real VM PTY tests, including pipelines and interrupted jobs; Dell
-  promotion and a post-reboot VM check remain open.
+  passed real VM and Dell PTY tests, including pipelines and interrupted jobs;
+  the current Dell release has not had an OS reboot.
 - [ ] **Make ordinary desktop tasks coherent.** Applications, file types,
   default opener, browser downloads, drag-and-drop, notifications, search,
   keyboard shortcuts and window switching should work predictably together.

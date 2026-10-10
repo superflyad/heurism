@@ -1,5 +1,25 @@
 # Current product direction
 
+On 2026-10-09 the owner directed work toward substantive OS usability beyond
+wallpaper. Source revision `0572384` added bounded Tab completion to the C
+shell and real PTY regression cases. VM release
+`/opt/heurism/native/releases/heurism-os-20261010T005501Z-24116` passed shell,
+interactive/job-control, desktop and control sidecars, a live UID-1000 terminal
+completion/file operation, and checked reboot to fresh boot
+`111a682d-c551-4eb6-879d-b1791b161726`. Prechange checkpoint is
+`Heurism-shell-completion-pre-20261009` UUID
+`1674cf62-28f7-40b6-a09d-826417e730e1`. Temporary VM build packages were
+removed. Guarded Dell installer assembled and activated
+`/opt/heurism/native/releases/heurism-os-dell-20261010T010017Z-7933` on
+existing boot `edb102d9-25c6-409c-aa17-181fea3eaf41` without reboot.
+The Dell now has the same C shell and VM-tested clipboard terminal binaries;
+shell/job-control PTY sidecars, control/desktop/apps, release/corrupt-clone,
+live UID-1000 terminal completion and cross-app clipboard paste passed.
+SSH/watch/control/UI, C power and protected SSD/NVRAM checks remain healthy.
+This new release has not had a Dell OS reboot. Keep the remote-power guard;
+the earlier firmware-logo stall has no independent recovery. See
+`docs/shell-completion.md` and `docs/terminal-clipboard.md`.
+
 On 2026-10-09 the owner requested a Heurism look and performance unlike the
 stock Alpine/Xfce desktop. A sealed VM visual release
 `/opt/heurism/native/releases/heurism-os-20261009T235647Z-205314` now includes
