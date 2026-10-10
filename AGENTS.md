@@ -1,5 +1,25 @@
 # Current product direction
 
+On 2026-10-10 the physical Dell now selects `heurism` in
+`/etc/companion/native-session-mode`. The guarded Dell installer sealed and
+activated `/opt/heurism/native/releases/heurism-os-dell-20261010T153748Z-15862`
+with the C workspace 0.6, Heurism Xfwm theme, launcher and quick controls.
+The Dell assembler passed Xfce recovery, shell/PTY, Dell hardware control,
+settings/device/network/sound UI, workspace/quick/terminal, Files/Editor and
+sealed-release rejection tests. On live Xorg :0 the C workspace and Xfwm4
+passed `heurism-release health`; Xfce panel/desktop are absent, and the Xfce
+PAM screensaver reported active. Killing the C workspace selected `xfce` and
+returned a healthy locked Xfce session within eleven seconds; the C session
+was then restored. Root SSH, watch, control, Ethernet, saved brightness and
+audio, eight protected hashes and boot `edb102d9-25c6-409c-aa17-181fea3eaf41`
+stayed healthy. BootCurrent 0005 and BootOrder 0005,0000 were unchanged. No
+reboot or boot-path change occurred. Physical display/touch interaction and
+post-reboot persistence remain unverified. See
+`docs/heurism-dell-live-session.md`. The shared UID-1000 X11 session and
+unencrypted root disk still limit security; do not claim untrusted-app
+isolation. Keep authenticated SSH/watch independent and never reboot the Dell
+remotely without local recovery readiness.
+
 On 2026-10-10, Heurism desktop 0.6 from the sealed VM release was tested on
 the physical Dell inside a private 1920x1080 Xvfb :93 session with Xfwm4 and
 an X11 authorization cookie. The C workspace, quick controls with the Dell's
@@ -9,10 +29,8 @@ ec404f0bbf1c0cff3639128507e9e5546865afca0b14cdecc97bc19ebe8e5e0e.
 The Dell boot ID, active release and production Xfce :0 session were unchanged;
 SSH, watch, C control and eight protected hashes remained healthy. This is an
 isolated display-size gate, not physical screen/touch or full-session proof.
-The Dell's installed release predates the Heurism Xfwm theme and new session
-scripts. See docs/heurism-dell-workspace-gate.md. Assemble/test a complete Dell
-candidate before changing desktop mode; preserve root management and the SSD
-recovery path. Do not reboot remotely without local recovery readiness.
+The installed release at that test predates the Heurism Xfwm theme and new
+session scripts. See docs/heurism-dell-workspace-gate.md for that earlier gate.
 
 On 2026-10-10 the VM C dock's connection indicator gained Heurism quick
 controls: actual Ethernet address, honest virtual-audio status, checked C
@@ -354,9 +372,9 @@ The final Dell reboot confirmed the live Ethernet DHCP process advertises
 The local Git repository has commits but no remote; the current branch is
 `task/heurism-rename`.
 
-The owner asked for a usable revamp with an established desktop. The current
-default VM and Dell user session is Alpine Xfce 4.20 over Xorg, with Thunar and
-Mousepad. Companion-owned shell, terminal, settings, control and release
+The owner asked for a usable revamp with an established desktop. At the
+2026-10-03 bridge milestone, the default VM and Dell user sessions ran Alpine
+Xfce 4.20 over Xorg with Thunar and Mousepad. Companion-owned shell, terminal, settings, control and release
 verifier remain C. The original C workspace/dock is selectable with `native`
 in `/etc/companion/native-session-mode`; the legacy Python/Tk UI remains sealed
 recovery. The active VM release is

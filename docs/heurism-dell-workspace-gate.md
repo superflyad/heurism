@@ -34,3 +34,6 @@ after selecting `heurism` as the Dell default. Before that switch, assemble a
 complete Dell release containing the new theme and session scripts, run its
 guarded rollback checks, then validate the actual `:0` session with local
 recovery available. A firmware-logo halt still cannot be repaired over SSH.
+
+The complete Dell release was subsequently sealed and activated, and the live
+`:0` session selected Heurism. See [the later evidence](heurism-dell-live-session.md).

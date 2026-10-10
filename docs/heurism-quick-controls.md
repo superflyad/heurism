@@ -35,6 +35,8 @@ packages were removed. The ready checkpoint is
 `Heurism-quick-controls-ready-20261010` (UUID
 `749dc961-e3fa-47bf-87d3-ae5e9b5c50c7`). The Dell was not changed.
 
-The quick panel is a VM-tested Heurism surface. Xfwm4 and Xorg still manage
-windows, and the physical Dell remains on its established Xfce session.
+At this VM gate, the quick panel was a VM-tested Heurism surface; the Dell
+still ran Xfce. The Dell later selected the
+[live C desktop](heurism-dell-live-session.md). Xfwm4 and Xorg still manage
+windows.
 Shared UID-1000 X11 and the unencrypted disk remain security limits.

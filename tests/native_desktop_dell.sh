@@ -41,38 +41,36 @@ until DISPLAY=:1 xdotool search --name 'Heurism dock' >/dev/null 2>&1; do
     kill -0 "$ui"
     sleep 1
 done
-DISPLAY=:1 xdotool mousemove 500 1028 click 1
-sleep 1
-DISPLAY=:1 xdotool mousemove 170 398 click 1
+desktop=$(DISPLAY=:1 xdotool search --name '^Heurism desktop$' | tail -n 1)
+test -n "$desktop"
+DISPLAY=:1 xdotool mousemove 430 609 click 1
 sleep 1
 DISPLAY=:1 xdotool mousemove 170 365 click 1
 sleep 1
 case "$(cat "$state")" in *'"theme":"light"'*) ;; *) echo 'Appearance click did not reach C control' >&2; exit 1 ;; esac
 DISPLAY=:1 xwd -root -silent -out /tmp/heurism-native-dell-settings.xwd
-DISPLAY=:1 xdotool mousemove 500 1028 click 1
-sleep 1
-DISPLAY=:1 xdotool mousemove 400 398 click 1
+DISPLAY=:1 xdotool key --window "$desktop" F3
 sleep 1
 kill -0 "$ui"
 DISPLAY=:1 xwd -root -silent -out /tmp/heurism-native-dell-device.xwd
-DISPLAY=:1 xdotool mousemove 500 1028 click 1
+DISPLAY=:1 xdotool mousemove 150 217 click 1
 sleep 1
-DISPLAY=:1 xdotool mousemove 170 480 click 1
+DISPLAY=:1 xdotool mousemove 600 609 click 1
 sleep 1
 DISPLAY=:1 xdotool mousemove 145 404 click 1
 sleep 10
 kill -0 "$ui"
-DISPLAY=:1 xdotool mousemove 150 469 click 1
-sleep 1
 DISPLAY=:1 xdotool mousemove 200 735 click 1
 sleep 1
 DISPLAY=:1 xdotool type --clearmodifiers 'test-only-pass'
 sleep 1
 DISPLAY=:1 xwd -root -silent -out /tmp/heurism-native-dell-network.xwd
-DISPLAY=:1 xdotool mousemove 500 1028 click 1
+DISPLAY=:1 xdotool mousemove 150 217 click 1
 sleep 1
-DISPLAY=:1 xdotool mousemove 400 644 click 1
+DISPLAY=:1 xdotool mousemove 1100 609 click 1
+sleep 1
+DISPLAY=:1 xdotool mousemove 150 555 click 1
 sleep 1
 kill -0 "$ui"
 DISPLAY=:1 xwd -root -silent -out /tmp/heurism-native-dell-sound.xwd
-echo 'Dell native desktop Xvfb navigation passed'
+echo 'Dell native desktop Xvfb settings, device, network and sound passed'

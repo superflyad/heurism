@@ -11,6 +11,9 @@ the C workspace, searchable C launcher, original Heurism window frames and
 [the visual pass](heurism-look.md) and [launcher](heurism-launcher.md). The Dell later
 returned to pinned SSH on a healthy fresh boot after an unreachable interval; see
 [the incident record](dell-terminal-20261009.md).
+The Dell now runs the C workspace release
+`/opt/heurism/native/releases/heurism-os-dell-20261010T153748Z-15862`; see
+[the live-session record](heurism-dell-live-session.md).
 
 Heurism is a Linux OS experience built from small Unix programs. Alpine owns
 the kernel, drivers, OpenRC and standard utilities. Heurism owns the C shell,
@@ -23,8 +26,8 @@ operations. Files and Editor run as the desktop user and edit that user's data.
 ## Xfce desktop bridge, 2026-10-03
 
 At this milestone the default user session on the VM and Dell ran Alpine Xfce
-4.20 over the existing Xorg server. The Dell still uses this established
-session; the VM now selects the Heurism C workspace with Xfwm window management.
+4.20 over the existing Xorg server. Both later selected the Heurism C workspace
+with Xfwm window management; Xfce remains the Dell recovery session.
 In the bridge session Xfce supplies the panel, window manager, desktop, Thunar
 and Mousepad; Companion Settings is a regular C X11 window, and the C terminal
 and shell remain available from the application menu and dock. The C control

@@ -5,8 +5,9 @@ The `CompanionDev` VM now selects `heurism` in
 `heurism-desktop` in C/X11/Xft. Its workspace opens the C Files, Editor and
 Terminal, Firefox, network/settings pages, and running window tasks. Xfwm4
 still manages windows and Xfce's PAM screensaver locks the session. Alpine
-Linux remains the kernel, driver, package and Unix service foundation. The
-physical Dell remains on its proven Xfce session.
+Linux remains the kernel, driver, package and Unix service foundation. At this
+VM gate, the physical Dell remained on Xfce; it later selected the
+[live C desktop](heurism-dell-live-session.md).
 
 The VM release is
 `/opt/heurism/native/releases/heurism-os-20261010T142713Z-21679`.

@@ -1,6 +1,6 @@
 # Xfce desktop bridge
 
-The established Dell and recovery desktop is Alpine's Xfce 4.20 on the existing
+The established Dell recovery desktop is Alpine's Xfce 4.20 on the existing
 Linux/Xorg foundation. It supplies window management, a top application panel,
 a bottom launcher dock, desktop icons, Thunar file management, Mousepad editing
 and an ordinary Xfce terminal. Heurism owned shell, terminal, settings,
@@ -14,6 +14,10 @@ after `xfwm4`, `xfce4-panel`, `xfdesktop` and an X11 window manager are live.
 The sealed `heurism-release` verifier checks that health against the current
 release, boot ID, UID 1000 and a live Xfce session process. The native release
 installer has an isolated Xvfb sidecar test and a rollback gate.
+
+The Dell selected the Heurism C workspace on 2026-10-10. See
+[the live-session record](heurism-dell-live-session.md). This page records the
+Xfce bridge and its recovery path.
 
 The application menu contains **Heurism Settings** and **Heurism C
 Terminal**. The top-right red power icon and **Applications > System >

@@ -28,11 +28,12 @@ returns focus to it.
 The dock's connection button opens C quick controls for real network status,
 appearance, Settings, Network, Lock and checked Power. See
 [the quick-controls evidence](../../docs/heurism-quick-controls.md).
-The Dell still defaults to Alpine Xfce 4.20 with Thunar and Mousepad. In that
-recovery session, Heurism Settings and the C terminal have Xfce application launchers.
-The current C workspace also passed an isolated 1920x1080 X11 run on the Dell;
-the active session was not switched. See
-[the Dell workspace gate](../../docs/heurism-dell-workspace-gate.md).
+The Dell now defaults to the Heurism C workspace with Xfwm4 window management
+and an active Xfce PAM screen lock. Alpine Xfce 4.20 with Thunar and Mousepad
+remains the automatic recovery session. In recovery, Heurism Settings and the C
+terminal have Xfce application launchers. See
+[the Dell live-session evidence](../../docs/heurism-dell-live-session.md) and
+[the isolated workspace gate](../../docs/heurism-dell-workspace-gate.md).
 The top-right red power icon and Applications > System > Heurism Power open
 the C Power window for checked Restart and Shut down, each requiring a second
 click within ten seconds. The disabled Xfce Log Out menu entry is replaced in
@@ -62,11 +63,12 @@ session can fall back to the sealed legacy UI if its own X startup fails. Root
 SSH and `companion-watch` run independently of the desktop. Do not deploy this
 VM installer on the Dell. The Dell has its own exact-DMI installer,
 `install-native-dell.sh`, and the active sealed release
-`/opt/heurism/native/releases/heurism-os-dell-20261010T013332Z-20380`. It
-adds shell completion and the VM-tested clipboard terminal. The previous look
-release passed a checked Dell reboot; this newer release was activated without
-an OS reboot. See [the shell completion record](../../docs/shell-completion.md)
-and [the earlier Dell restart record](../../docs/dell-terminal-20261009.md). The Dell
+`/opt/heurism/native/releases/heurism-os-dell-20261010T153748Z-15862`. It
+adds the original C workspace, launcher, quick controls and Heurism window
+theme to the earlier shell and clipboard terminal. This release was activated
+without an OS reboot. See [the Dell live-session record](../../docs/heurism-dell-live-session.md),
+[the shell completion record](../../docs/shell-completion.md) and
+[the earlier Dell restart record](../../docs/dell-terminal-20261009.md). The Dell
 installer's `assemble` action does not switch services. `activate` changes
 only the desktop/control OpenRC scripts and native release symlink, with a
 20-second health gate and automatic restoration of the previous scripts and
