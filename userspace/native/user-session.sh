@@ -53,6 +53,12 @@ heurism_session() {
     command -v xfsettingsd >/dev/null
     command -v xfce4-screensaver >/dev/null
     command -v xfce4-screensaver-command >/dev/null
+    command -v xfconf-query >/dev/null
+    command -v tar >/dev/null
+    theme="$HOME/.themes/Heurism/xfwm4"
+    mkdir -p "$theme"
+    tar -xzf "$release/heurism-xfwm4.tar.gz" -C "$theme"
+    xfconf-query -c xfwm4 -p /general/theme -n -t string -s Heurism
     export XDG_CURRENT_DESKTOP=XFCE DESKTOP_SESSION=heurism XDG_SESSION_DESKTOP=heurism
     export XDG_SESSION_TYPE=x11
     xfsettingsd >"$state/heurism-settings-daemon.log" 2>&1 &

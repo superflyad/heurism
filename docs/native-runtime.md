@@ -5,8 +5,10 @@ The VM and Dell both passed checked reboot into their new sealed releases;
 see [heurism-migration.md](heurism-migration.md). The release IDs and command
 names below record earlier Companion milestones and remain historical evidence.
 The development VM currently runs
-`/opt/heurism/native/releases/heurism-os-20261009T175459Z-69087` with
-[interactive C shell job control](shell-job-control.md). The Dell later
+`/opt/heurism/native/releases/heurism-os-20261010T144037Z-34721` with
+the C workspace, original Heurism window frames and
+[interactive C shell job control](shell-job-control.md). See
+[the visual pass](heurism-look.md). The Dell later
 returned to pinned SSH on a healthy fresh boot after an unreachable interval; see
 [the incident record](dell-terminal-20261009.md).
 
@@ -18,10 +20,12 @@ the terminal handles display and PTY, while the shell interprets commands; the
 desktop handles windows and input, while the root service checks privileged
 operations. Files and Editor run as the desktop user and edit that user's data.
 
-## Current desktop bridge, 2026-10-03
+## Xfce desktop bridge, 2026-10-03
 
-The default user session on the VM and Dell now runs Alpine Xfce 4.20 over the
-existing Xorg server. Xfce supplies the panel, window manager, desktop, Thunar
+At this milestone the default user session on the VM and Dell ran Alpine Xfce
+4.20 over the existing Xorg server. The Dell still uses this established
+session; the VM now selects the Heurism C workspace with Xfwm window management.
+In the bridge session Xfce supplies the panel, window manager, desktop, Thunar
 and Mousepad; Companion Settings is a regular C X11 window, and the C terminal
 and shell remain available from the application menu and dock. The C control
 service, hardware policy, sealed release verifier and root SSH/watch path remain

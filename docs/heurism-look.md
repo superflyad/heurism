@@ -90,9 +90,39 @@ the look persists across one normal Dell reboot. It does not establish
 independent recovery from a future firmware-logo stall; keep the remote-power
 guard active.
 
-This is the first workspace pass. Application windows and much of the icon
-set still use Xfce themes. The next visual work is a consistent Heurism
-window, notification, launcher and settings language, tested against file,
-browser, terminal, touch and accessibility tasks. Measure fresh boot-to-ready,
-idle memory, app launch and responsiveness on identical VM configurations
-before claiming a performance gain.
+This was the first workspace pass. Application windows and much of the icon
+set still used Xfce themes. The next visual work includes notifications,
+launcher and settings language, tested against file, browser, terminal, touch
+and accessibility tasks. Measure fresh boot-to-ready, idle memory, app launch
+and responsiveness on identical VM configurations before claiming a
+performance gain.
+
+## C workspace window frames, 2026-10-10
+
+The VM's selected `heurism` session now has original Heurism Xfwm4 window
+decorations. A host-only Python/Pillow generator creates 60 small PNG frame and
+button pieces plus `themerc` from code; no Python runs in the guest desktop.
+The active frame is navy with a teal edge and copper close control. Inactive
+windows have a muted frame. Files and the C Terminal both displayed these
+decorations in an isolated 1280×800 Xvfb session; its capture is
+`build/prime-vm/heurism-theme-preview.png`.
+
+The 4.3 KiB archive is a required, hashed release asset. The C verifier checks
+its archive hash with the other runtime files. The Heurism session extracts it
+into the UID-1000 user's Xfwm theme directory and selects it before starting
+Xfwm. The VM, Dell and fresh-image installers all package the same asset. The
+Dell was not changed in this iteration.
+
+Before activation, checkpoint `Heurism-before-window-theme-20261010` (UUID
+`585347f5-5703-44cf-8fb6-0606ff20e16c`) preserved the previous VM. The
+guarded VM installer assembled and activated
+`/opt/heurism/native/releases/heurism-os-20261010T144037Z-34721` after its
+shell, interactive shell, app, control and release tests. Checked C reboot
+returned fresh boot `aa8b6855-6782-4c32-b70e-03389719ca77` with that same
+release, a healthy C workspace, Heurism theme selection, SSH, watch and control.
+Temporary build packages were removed.
+
+This changes window decoration, not the window manager's underlying behavior.
+The VM still uses Xfwm4 on Xorg, and the physical Dell still uses the proven
+Xfce session. The shared UID-1000 X11 security boundary and unencrypted disk
+remain as documented in `security.md`.

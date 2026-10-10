@@ -117,7 +117,7 @@ def native_archive():
     source = REPO/'userspace/native'
     with tarfile.open(archive, 'w:gz') as stream:
         for path in sorted(source.iterdir()):
-            if not path.is_file() or not (path.name == 'Makefile' or
+            if not path.is_file() or not (path.name in ('Makefile', 'heurism-xfwm4.tar.gz') or
                     path.suffix in ('.c', '.h', '.sh', '.initd', '.desktop', '.xml', '.svg')):
                 continue
             info = stream.gettarinfo(str(path), arcname='native/'+path.name)
