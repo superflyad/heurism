@@ -64,9 +64,19 @@ UID 1000 Xfce running. SSH, watch, control and desktop services stayed up;
 Ethernet, AC power, sound and input preferences remained present. The checked
 power endpoint and protected SSD/NVRAM verification passed. The boot ID stayed
 `9668135f-ca95-4be3-a0d9-78a6fc9a78a7`: this was a desktop-service
-activation, not an OS reboot. Dell restart persistence has not been tested for
+activation, not an OS reboot. Dell boot persistence has not been tested for
 this release. The remote-power guard remains active because a prior Dell
 restart stalled at its firmware logo without an independent recovery path.
+
+The on-disk `/opt/heurism/native/current` symlink resolves to this release.
+OpenRC's default runlevel enables `heurism-control` and `heurism-desktop`, whose
+installed init script starts `current/session.sh`. Xfce saved its wallpaper
+and panel XML in the UID-1000 home directory. A later `heurism-desktop` service
+restart returned a new healthy Xfce session on the same release; the wallpaper,
+menu, panel and dock were painted again in
+`build/desktop/dell-heurism-persisted-20261009.png`. This verifies persistence
+across a user-session restart. A full Dell boot remains untested for this
+release because the firmware-logo stall has no remote recovery path.
 
 This is the first workspace pass. Application windows and much of the icon
 set still use Xfce themes. The next visual work is a consistent Heurism
