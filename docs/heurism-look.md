@@ -64,9 +64,7 @@ UID 1000 Xfce running. SSH, watch, control and desktop services stayed up;
 Ethernet, AC power, sound and input preferences remained present. The checked
 power endpoint and protected SSD/NVRAM verification passed. The boot ID stayed
 `9668135f-ca95-4be3-a0d9-78a6fc9a78a7`: this was a desktop-service
-activation, not an OS reboot. Dell boot persistence has not been tested for
-this release. The remote-power guard remains active because a prior Dell
-restart stalled at its firmware logo without an independent recovery path.
+activation, not an OS reboot.
 
 The on-disk `/opt/heurism/native/current` symlink resolves to this release.
 OpenRC's default runlevel enables `heurism-control` and `heurism-desktop`, whose
@@ -75,8 +73,22 @@ and panel XML in the UID-1000 home directory. A later `heurism-desktop` service
 restart returned a new healthy Xfce session on the same release; the wallpaper,
 menu, panel and dock were painted again in
 `build/desktop/dell-heurism-persisted-20261009.png`. This verifies persistence
-across a user-session restart. A full Dell boot remains untested for this
-release because the firmware-logo stall has no remote recovery path.
+across a user-session restart.
+
+With the owner able to recover the Dell locally, the C checked power service
+scheduled a normal reboot. Pinned SSH returned on fresh boot
+`edb102d9-25c6-409c-aa17-181fea3eaf41`. The same sealed release verified
+and reported healthy UID-1000 Xfce. The actual 1920×1080 capture at
+`build/desktop/dell-heurism-freshboot-20261009.png` shows the full Heurism
+wallpaper, menu, panel and dock. Ethernet, AC power, root SSH, watch, C control,
+boot health and saved input settings returned; `heurismctl power-check` passed.
+Dell firmware appended its known auto-created USB NIC entries to BootOrder.
+Their paths and `7cc2c61db2f5` MAC were checked before restoring the proven
+SSD order `0005,0000`. `BootCurrent` is `0005`, `DriverOrder` is `0000,0001`,
+BootNext is absent, and the protected SSD/NVRAM verifier passes. This proves
+the look persists across one normal Dell reboot. It does not establish
+independent recovery from a future firmware-logo stall; keep the remote-power
+guard active.
 
 This is the first workspace pass. Application windows and much of the icon
 set still use Xfce themes. The next visual work is a consistent Heurism

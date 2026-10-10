@@ -20,14 +20,20 @@ were then installed on the Dell through the guarded installer as sealed release
 Dell sidecar tests, C release verification, live 1920x1080 screen capture,
 SSH/watch/control/desktop status, checked power service and protected SSD/NVRAM
 verification passed on boot `9668135f-ca95-4be3-a0d9-78a6fc9a78a7`.
-No Dell OS reboot occurred, so Dell boot persistence for this release is
-unverified. The on-disk `current` symlink points to the sealed release and
+The on-disk `current` symlink points to the sealed release and
 OpenRC's default runlevel links enable `heurism-control` and `heurism-desktop`.
 The desktop init script launches `/opt/heurism/native/current/session.sh`;
 Xfce's user profile stores the wallpaper and panel settings. A Dell desktop
 service restart returned healthy UID-1000 Xfce with the same release and
-painted look. This proves session-restart persistence, not OS-reboot recovery.
-The remote-power guard remains active. See `docs/heurism-look.md`.
+painted look. With the owner available for local recovery, a checked C reboot
+returned fresh boot `edb102d9-25c6-409c-aa17-181fea3eaf41` and the same
+sealed release, SSH/watch/control/UI health, saved settings and actual painted
+1920x1080 desktop. Dell appended known USB NIC entries to BootOrder; after
+checking their paths and MAC, `BootOrder` was restored to `0005,0000`.
+`BootCurrent` is `0005`, `DriverOrder` is `0000,0001`, BootNext absent, and the
+protected SSD/NVRAM verifier passes. This proves persistence across one normal
+Dell reboot, not unattended recovery from a future firmware stall. Keep the
+remote-power guard active. See `docs/heurism-look.md`.
 
 On 2026-10-09 the owner physically found the Dell stalled at its logo after
 the checked C restart, with the laptop throttling. Powering it off and on
