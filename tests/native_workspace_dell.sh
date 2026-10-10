@@ -38,6 +38,9 @@ trap cleanup EXIT HUP INT TERM
 chown companion-ui:companion-ui "$work"
 chmod 700 "$work"
 install -d -o companion-ui -g companion-ui -m 700 "$work/run" "$work/config"
+install -d -o companion-ui -g companion-ui -m 755 "$work/Documents"
+printf 'Dell search fixture\n' >"$work/Documents/orbitnote.txt"
+chown companion-ui:companion-ui "$work/Documents/orbitnote.txt"
 install -d -o companion-ui -g companion-ui -m 755 "$work/.themes/Heurism/xfwm4"
 cookie=$(od -An -N16 -tx1 /dev/urandom | tr -d '[:space:]')
 : >"$work/Xauthority"
@@ -88,10 +91,17 @@ test -n "$terminal"
 xdotool windowactivate --sync "$terminal"
 xdotool key --clearmodifiers super+space
 sleep 1
-xdotool search --name '^Heurism Launcher$' >/dev/null
+launcher=$(xdotool search --name '^Heurism Launcher$' | tail -n 1)
+test -n "$launcher"
+xdotool windowactivate --sync "$launcher"
+xdotool type --clearmodifiers 'orbitnote'
+xdotool key Return
+sleep 2
+xdotool search --name '^Heurism Editor$' >/dev/null
+if xdotool search --name '^Heurism Launcher$' >/dev/null 2>&1; then exit 1; fi
 test "$(readlink -f /opt/heurism/native/current)" = "$release"
 rc-service heurism-desktop status >/dev/null
 rc-service heurism-control status >/dev/null
 rc-service companion-watch status >/dev/null
 rc-service sshd status >/dev/null
-echo 'Dell-size isolated C workspace, quick controls, launcher and terminal passed; :0 unchanged'
+echo 'Dell-size isolated C workspace, quick controls, local file search and terminal passed; :0 unchanged'

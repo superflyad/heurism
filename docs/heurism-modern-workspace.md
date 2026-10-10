@@ -93,3 +93,39 @@ Settings. These are specific usability gaps in the current build. Any
 contextual assistance should be optional and show exactly what it reads or
 changes. The shared X11 session and unencrypted disk still require separate
 security work before treating installed apps as isolated.
+
+## Local launcher search, 2026-10-10
+
+The C launcher now finds visible files in the top level of Home and files or
+folders in Documents, Downloads, Desktop and Pictures, including one nested
+folder level. It scans at most 2,048 visible entries and keeps at most 256
+results when the launcher starts. Search begins after two typed characters,
+sorts file results by modification time, and matches names without opening or
+reading file contents. Hidden entries and symbolic links are excluded. A
+matching directory opens in C Files; plain text opens in C Editor; other file
+types use the user's registered GIO application. Search results refresh when
+the launcher is opened again. The bounds keep a large home directory from
+stalling the desktop, while deeper files currently require Files navigation.
+
+The isolated VM interaction test verified app and window search, opening a
+visible document in C Editor, opening a matching folder in C Files, and hiding
+a dotfile from results. The 1280×800 panel was captured at
+`build/prime-vm/heurism-search-local-file.png`. The sealed VM release is
+`/opt/heurism/native/releases/heurism-os-20261010T163403Z-33906` and survived
+a checked reboot to fresh boot `2f6d7ffd-8cfc-4d08-ae02-c4e1dc093ba0`.
+Checkpoint `Heurism-local-search-20261010T1640` has UUID
+`be07e1d4-9941-4b81-a850-4db76873cfe4`.
+
+The Dell 1920×1080 isolated gate verified local document search and C Editor
+opening without changing display `:0`. The Dell-only assembler also passed
+shell, control, desktop, app and sealed-release corruption gates. Its rollback
+installer activated
+`/opt/heurism/native/releases/heurism-os-dell-20261010T163754Z-22556`.
+On existing boot `edb102d9-25c6-409c-aa17-181fea3eaf41`, live UI,
+SSH, watch, control, release verification and protected hashes passed after
+temporary build packages were removed. `BootCurrent` is `0005` and
+`BootOrder` is `0005,0000`. No Dell reboot was performed.
+
+The launcher still accepts only ASCII typed input, and the bounded scan is
+not a full content index. Unicode input, search ranking, multi-workspace
+navigation and consistent Editor/Settings layout remain open desktop work.

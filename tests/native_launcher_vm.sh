@@ -27,6 +27,12 @@ chown companion-ui:companion-ui "$work"
 chmod 700 "$work"
 install -d -o companion-ui -g companion-ui -m 700 "$work/run"
 install -d -o companion-ui -g companion-ui -m 755 "$work/data/applications"
+install -d -o companion-ui -g companion-ui -m 755 "$work/Documents"
+install -d -o companion-ui -g companion-ui -m 755 "$work/Documents/ProjectAtlas"
+printf 'search fixture\n' >"$work/Documents/orbitnote.txt"
+printf 'hidden fixture\n' >"$work/Documents/.secretship.txt"
+chown companion-ui:companion-ui "$work/Documents/orbitnote.txt" \
+    "$work/Documents/.secretship.txt"
 cat >"$work/data/applications/sample-launcher-test.desktop" <<EOF
 [Desktop Entry]
 Type=Application
@@ -201,4 +207,37 @@ sleep 1
 test ! -e "$work/hidden-launched"
 xdotool search --name '^Heurism Launcher$' >/dev/null
 xdotool key Escape
-echo "C launcher, installed-app filtering, window switching and quick controls passed; captures: $work/workspace.xwd $work/launcher.xwd $work/window-switch.xwd $work/quick-controls.xwd $work/installed-app.xwd"
+xdotool mousemove "$launcher_x" "$dock_click_y" click 1
+sleep 1
+launcher=$(xdotool search --name '^Heurism Launcher$' | tail -n 1)
+xdotool windowactivate --sync "$launcher"
+xdotool type --clearmodifiers 'orbitnote'
+sleep 1
+xwd -root -silent -out "$work/local-file.xwd"
+xdotool key Return
+sleep 2
+xdotool search --name '^Heurism Editor$' >/dev/null
+if xdotool search --name '^Heurism Launcher$' >/dev/null 2>&1; then exit 1; fi
+files_before=$(xdotool search --name '^Heurism Files$' | wc -l)
+xdotool mousemove "$launcher_x" "$dock_click_y" click 1
+sleep 1
+launcher=$(xdotool search --name '^Heurism Launcher$' | tail -n 1)
+xdotool windowactivate --sync "$launcher"
+xdotool type --clearmodifiers 'ProjectAtlas'
+xdotool key Return
+sleep 2
+files_after=$(xdotool search --name '^Heurism Files$' | wc -l)
+test "$files_after" -gt "$files_before"
+if xdotool search --name '^Heurism Launcher$' >/dev/null 2>&1; then exit 1; fi
+xdotool mousemove "$launcher_x" "$dock_click_y" click 1
+sleep 1
+launcher=$(xdotool search --name '^Heurism Launcher$' | tail -n 1)
+xdotool windowactivate --sync "$launcher"
+xdotool type --clearmodifiers 'secretship'
+sleep 1
+xwd -root -silent -out "$work/hidden-file.xwd"
+xdotool key Return
+sleep 1
+xdotool search --name '^Heurism Launcher$' >/dev/null
+xdotool key Escape
+echo "C launcher, installed apps, local file search, hidden-file exclusion, window switching and quick controls passed; captures: $work/workspace.xwd $work/launcher.xwd $work/window-switch.xwd $work/quick-controls.xwd $work/installed-app.xwd $work/local-file.xwd $work/hidden-file.xwd"

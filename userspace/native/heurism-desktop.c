@@ -5,10 +5,12 @@
 #include <X11/Xutil.h>
 #include <X11/keysym.h>
 #include <X11/Xft/Xft.h>
+#include <dirent.h>
 #include <errno.h>
 #include <fcntl.h>
 #include <gio/gio.h>
 #include <json-c/json.h>
+#include <limits.h>
 #include <locale.h>
 #include <poll.h>
 #include <signal.h>
@@ -26,11 +28,14 @@
 #define DEFAULT_SOCKET "/run/heurism-desktop/control.sock"
 #define MAX_HITS 64
 #define MAX_TASKS 16
+#define MAX_LOCAL_RESULTS 256
+#define MAX_LOCAL_SCANNED 2048
 
 enum page { WORKSPACE, MENU, OVERVIEW, SETTINGS, DEVICE, NETWORK, SOUND };
 enum action { NONE, SHOW_WORKSPACE, SHOW_MENU, SHOW_OVERVIEW, SHOW_SETTINGS,
               SHOW_DEVICE, SHOW_NETWORK, SHOW_SOUND, SHOW_POWER, SHOW_QUICK,
               LOCK_DESKTOP, LAUNCH_FILES, LAUNCH_EDITOR, LAUNCH_INSTALLED,
+              OPEN_LOCAL,
               LAUNCH_BROWSER, LAUNCH_TERMINAL, LAUNCH_KEYBOARD, TOGGLE_THEME,
               SWITCH_TASK, MINIMIZE_TASKS, ADMIN_CONSOLE, RESTART_VM, SHUT_DOWN_VM,
               BRIGHTER, DIMMER, TAP_TOGGLE, SCROLL_TOGGLE, SPEED_UP, SPEED_DOWN,
@@ -39,6 +44,11 @@ enum action { NONE, SHOW_WORKSPACE, SHOW_MENU, SHOW_OVERVIEW, SHOW_SETTINGS,
               SOUND_MUTE, BIOS_SELECT, BIOS_NEXT, BIOS_APPLY };
 struct hit { Window window; int x, y, width, height; enum action action; int index; };
 struct task { Window window; char title[64]; };
+struct local_item {
+    char name[NAME_MAX + 1], detail[128], path[PATH_MAX];
+    time_t modified;
+    bool directory;
+};
 struct desktop {
     Display *display;
     int screen, width, height, dock_x, dock_y, dock_width;
@@ -74,6 +84,8 @@ struct desktop {
     char launcher_query[64];
     int launcher_selected, launcher_offset;
     GList *installed_apps;
+    GPtrArray *local_items;
+    int local_scanned;
     enum action pending_power;
     time_t power_deadline;
     const char *control_socket;
@@ -111,6 +123,66 @@ static void load_installed_apps(struct desktop *d) {
     }
     g_list_free_full(all, g_object_unref);
     d->installed_apps = g_list_sort(d->installed_apps, compare_app_names);
+}
+
+static void scan_local(struct desktop *d, const char *path, const char *place,
+                       int depth) {
+    if (d->local_items->len >= MAX_LOCAL_RESULTS ||
+        d->local_scanned >= MAX_LOCAL_SCANNED) return;
+    DIR *directory = opendir(path);
+    if (!directory) return;
+    struct dirent *entry;
+    while ((entry = readdir(directory)) &&
+           d->local_items->len < MAX_LOCAL_RESULTS &&
+           d->local_scanned < MAX_LOCAL_SCANNED) {
+        if (entry->d_name[0] == '.') continue;
+        d->local_scanned++;
+        char full[PATH_MAX];
+        if (snprintf(full, sizeof full, "%s/%s", path, entry->d_name) >=
+            (int)sizeof full) continue;
+        struct stat info;
+        if (fstatat(dirfd(directory), entry->d_name, &info, AT_SYMLINK_NOFOLLOW) ||
+            (!S_ISREG(info.st_mode) && !S_ISDIR(info.st_mode))) continue;
+        if (depth >= 0 || S_ISREG(info.st_mode)) {
+            struct local_item *item = g_new0(struct local_item, 1);
+            snprintf(item->name, sizeof item->name, "%s", entry->d_name);
+            snprintf(item->path, sizeof item->path, "%s", full);
+            snprintf(item->detail, sizeof item->detail, "%s", place);
+            item->directory = S_ISDIR(info.st_mode);
+            item->modified = info.st_mtime;
+            g_ptr_array_add(d->local_items, item);
+        }
+        if (depth > 0 && S_ISDIR(info.st_mode)) {
+            char child_place[128];
+            if (snprintf(child_place, sizeof child_place, "%s/%s", place,
+                         entry->d_name) < (int)sizeof child_place)
+                scan_local(d, full, child_place, depth - 1);
+        }
+    }
+    closedir(directory);
+}
+
+static gint compare_local_recency(gconstpointer left, gconstpointer right) {
+    const struct local_item *a = *(const struct local_item * const *)left;
+    const struct local_item *b = *(const struct local_item * const *)right;
+    if (a->modified != b->modified) return a->modified < b->modified ? 1 : -1;
+    return strcmp(a->name, b->name);
+}
+
+static void load_local_files(struct desktop *d) {
+    const char *home = getenv("HOME");
+    d->local_items = g_ptr_array_new_with_free_func(g_free);
+    if (!home || home[0] != '/') return;
+    scan_local(d, home, "Home", -1);
+    const char *places[] = {"Documents", "Downloads", "Desktop", "Pictures"};
+    for (size_t i = 0; i < sizeof places / sizeof places[0]; i++) {
+        char path[PATH_MAX];
+        struct stat info;
+        if (snprintf(path, sizeof path, "%s/%s", home, places[i]) >=
+            (int)sizeof path || lstat(path, &info) || !S_ISDIR(info.st_mode)) continue;
+        scan_local(d, path, places[i], 1);
+    }
+    g_ptr_array_sort(d->local_items, compare_local_recency);
 }
 
 static int (*previous_x_error)(Display *, XErrorEvent *);
@@ -569,6 +641,14 @@ static int launcher_results(struct desktop *d, int wanted, struct launcher_resul
             launcher_add(wanted, choice, &count,
                 (struct launcher_result){d->tasks[i].title,
                     "Open window", SWITCH_TASK, i});
+    if (strlen(d->launcher_query) >= 2 && d->local_items)
+        for (guint i = 0; i < d->local_items->len; i++) {
+            struct local_item *item = g_ptr_array_index(d->local_items, i);
+            if (strcasestr(item->name, d->launcher_query))
+                launcher_add(wanted, choice, &count,
+                    (struct launcher_result){item->name, item->detail,
+                        OPEN_LOCAL, (int)i});
+        }
     for (size_t i = 4; i < sizeof launcher_items / sizeof launcher_items[0]; i++)
         if (launcher_match(d, launcher_items[i].name, launcher_items[i].detail))
             launcher_add(wanted, choice, &count,
@@ -620,7 +700,7 @@ static void render_launcher(struct desktop *d) {
     if (d->launcher_selected >= d->launcher_offset + capacity)
         d->launcher_offset = d->launcher_selected - capacity + 1;
     if (!count) label(d, d->background, 48, 218, d->font_body,
-                      "No matching apps or windows", 157, 176, 198);
+                      "No matching apps, files or windows", 157, 176, 198);
     for (int index = d->launcher_offset;
          index < count && index < d->launcher_offset + capacity; index++) {
             struct launcher_result item = launcher_choice(d, index);
@@ -635,7 +715,8 @@ static void render_launcher(struct desktop *d) {
             hit(d, d->background, 30, y, d->width - 60, 48, item.action, item.index);
     }
     char footer[128];
-    snprintf(footer, sizeof footer, "%d results  ·  ↑↓ choose  ·  Enter open  ·  Esc close", count);
+    snprintf(footer, sizeof footer, "%d result%s  ·  ↑↓ choose  ·  Enter open  ·  Esc close",
+             count, count == 1 ? "" : "s");
     label(d, d->background, 32, d->height - 25, d->font_small, footer, 157, 176, 198);
 }
 
@@ -941,7 +1022,8 @@ static void launch(struct desktop *d, const char *path, const char *argument) {
     d->notice[0] = 0;
 }
 
-static void launch_native(struct desktop *d, const char *name) {
+static void launch_native_at(struct desktop *d, const char *name,
+                             const char *argument) {
     char path[512];
     ssize_t length = readlink("/proc/self/exe", path, sizeof path - 1);
     if (length <= 0 || length >= (ssize_t)sizeof path - 1) return;
@@ -949,7 +1031,36 @@ static void launch_native(struct desktop *d, const char *name) {
     char *slash = strrchr(path, '/');
     if (!slash || (size_t)(slash - path) + 1 + strlen(name) >= sizeof path) return;
     strcpy(slash + 1, name);
-    launch(d, path, NULL);
+    launch(d, path, argument);
+}
+
+static void launch_native(struct desktop *d, const char *name) {
+    launch_native_at(d, name, NULL);
+}
+
+static void open_local(struct desktop *d, int index) {
+    if (!d->local_items || index < 0 || (guint)index >= d->local_items->len) return;
+    struct local_item *item = g_ptr_array_index(d->local_items, (guint)index);
+    if (item->directory) {
+        launch_native_at(d, "heurism-files", item->path);
+        return;
+    }
+    char *type = g_content_type_guess(item->path, NULL, 0, NULL);
+    bool text_file = type && g_content_type_is_a(type, "text/plain");
+    g_free(type);
+    if (text_file) {
+        launch_native_at(d, "heurism-editor", item->path);
+        return;
+    }
+    GFile *file = g_file_new_for_path(item->path);
+    char *uri = g_file_get_uri(file);
+    GError *error = NULL;
+    if (!uri || !g_app_info_launch_default_for_uri(uri, NULL, &error))
+        snprintf(d->notice, sizeof d->notice, "Could not open file: %s",
+                 error ? error->message : "no application registered");
+    g_clear_error(&error);
+    g_free(uri);
+    g_object_unref(file);
 }
 
 static void launch_self(struct desktop *d, const char *argument) {
@@ -1021,6 +1132,7 @@ static void run_action(struct desktop *d, enum action action, int index) {
             if (error) g_error_free(error);
             break;
         }
+        case OPEN_LOCAL: open_local(d, index); break;
         case SHOW_SETTINGS: launch_self(d, "--settings"); break;
         case SHOW_OVERVIEW: launch_self(d, "--overview"); break;
         case SHOW_NETWORK: launch_self(d, "--network"); break;
@@ -1482,7 +1594,10 @@ int main(int argc, char **argv) {
     else if (argc != 1) return fprintf(stderr, "usage: heurism-desktop [--settings|--launcher|--quick|--overview|--network|--power|--socket path]\n"), 2;
     signal(SIGCHLD, SIG_IGN);
     if (!setup_x(&d)) return fprintf(stderr, "heurism-desktop: X display unavailable\n"), 1;
-    if (d.launcher_mode) load_installed_apps(&d);
+    if (d.launcher_mode) {
+        load_installed_apps(&d);
+        load_local_files(&d);
+    }
     if (!d.settings_mode) install_launcher_shortcut(&d);
     refresh_status(&d);
     refresh_page(&d);
