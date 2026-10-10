@@ -179,7 +179,7 @@ for service in networking sshd dbus companion-watch heurism-control heurism-desk
     chroot "$root" rc-update add "$service" default
 done
 for service in mount-ro killprocs savecache; do chroot "$root" rc-update add "$service" shutdown; done
-protected_paths='/boot/vmlinuz-lts /boot/initramfs-lts /boot/grub/grub.cfg /boot/efi/EFI/BOOT/BOOTX64.EFI /etc/fstab /etc/heurism/slot /etc/network/interfaces /etc/ssh/sshd_config /etc/ssh/ssh_host_ed25519_key.pub /etc/init.d/sshd /etc/init.d/companion-watch /etc/init.d/heurism-control /etc/init.d/heurism-desktop /usr/local/sbin/companion-vm-watch /usr/share/heurism/wallpaper.svg /etc/companion/platform.json /etc/heurism/desktop-lock /etc/os-release /etc/heurism/upstream-release /etc/heurism/packages.installed /etc/heurism/build-provenance'
+protected_paths='/boot/vmlinuz-lts /boot/initramfs-lts /sbin/init /boot/grub/grub.cfg /boot/efi/EFI/BOOT/BOOTX64.EFI /etc/fstab /etc/heurism/slot /etc/network/interfaces /etc/ssh/sshd_config /etc/ssh/ssh_host_ed25519_key.pub /etc/init.d/sshd /etc/init.d/companion-watch /etc/init.d/heurism-control /etc/init.d/heurism-desktop /usr/local/sbin/companion-vm-watch /usr/share/heurism/wallpaper.svg /etc/companion/platform.json /etc/heurism/desktop-lock /etc/os-release /etc/heurism/upstream-release /etc/heurism/packages.installed /etc/heurism/build-provenance'
 chroot "$root" sh -c "sha256sum $protected_paths > /etc/companion/vm-protected.sha256"
 chmod 644 "$root/etc/companion/vm-protected.sha256"
 mkdir -p "$root_b"

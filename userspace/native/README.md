@@ -16,6 +16,7 @@ VM desktop and control services.
 | `heurismctl` | Small C client for the local control socket. |
 | `heurism-session-config` | Root Xorg configuration from actual input devices on the verified VM or Dell profile. |
 | `heurism-release` | Verifies sealed release hashes and live UID-1000 UI health. |
+| `heurism-slot` | Fresh Hyper-V image only: verifies the inactive root, queues a one-time B boot, and renews B only after boot health. See [A/B updates](../../docs/ab-updates.md). |
 
 The default desktop session is Alpine Xfce 4.20. Its panel, window manager,
 desktop, Thunar file manager and Mousepad editor provide the established daily
@@ -33,12 +34,12 @@ so its controls do not bypass Heurism's checked power path. See
 [xfce-bridge.md](../../docs/xfce-bridge.md).
 
 The active VM release is selected by `/opt/heurism/native/current` and is
-`/opt/heurism/native/releases/heurism-os-20261010T005501Z-24116`.
+`/opt/heurism/native/releases/heurism-os-20261010T013054Z-3396`.
 The separate fresh-image candidate uses `install-image-vm.sh` during image
 construction. It seals the compiled C binaries before first boot, installs
 the active C services and provides the Xfce-to-C-workspace startup fallback.
-Its verified release is
-`/opt/heurism/native/releases/heurism-os-image-20261009T145632Z` on the
+Its latest verified release is
+`/opt/heurism/native/releases/heurism-os-image-20261010T035847Z` on the
 isolated `HeurismCandidate` VM; it has not replaced the existing development
 VM or Dell release. See [system base](../../docs/heurism-system-base.md).
 `install-native-vm.sh assemble` builds a versioned, hashed candidate;
@@ -48,7 +49,7 @@ session can fall back to the sealed legacy UI if its own X startup fails. Root
 SSH and `companion-watch` run independently of the desktop. Do not deploy this
 VM installer on the Dell. The Dell has its own exact-DMI installer,
 `install-native-dell.sh`, and the active sealed release
-`/opt/heurism/native/releases/heurism-os-dell-20261010T010017Z-7933`. It
+`/opt/heurism/native/releases/heurism-os-dell-20261010T013332Z-20380`. It
 adds shell completion and the VM-tested clipboard terminal. The previous look
 release passed a checked Dell reboot; this newer release was activated without
 an OS reboot. See [the shell completion record](../../docs/shell-completion.md)

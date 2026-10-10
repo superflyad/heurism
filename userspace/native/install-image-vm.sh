@@ -16,7 +16,7 @@ name=heurism-os-image-$(date -u +%Y%m%dT%H%M%SZ)
 release=$root/releases/$name
 install -d -m 755 "$root/releases" "$release"
 for program in heurism-sh heurism-terminal heurism-control heurismctl \
-    heurism-desktop heurism-app heurism-session-config heurism-release; do
+    heurism-desktop heurism-app heurism-session-config heurism-release heurism-slot; do
     install -m 755 "$source/$program" "$release/$program"
 done
 ln "$release/heurism-app" "$release/heurism-files"
@@ -32,7 +32,7 @@ for item in openbox.xml heurism-wallpaper.svg heurism-mark.svg \
 done
 (
     cd "$release"
-    sha256sum heurism-sh heurism-terminal heurism-control heurismctl \
+    sha256sum heurism-sh heurism-terminal heurism-control heurismctl heurism-slot \
         heurism-desktop heurism-app heurism-files heurism-editor \
         heurism-session-config heurism-release session.sh client.sh \
         user-session.sh xfce-power-panel.sh heurism-look.sh \
@@ -49,4 +49,6 @@ install -m 755 "$release/desktop-heurism.initd" /etc/init.d/heurism-desktop
 for program in heurism-sh heurism-terminal heurismctl heurism-release; do
     ln -s "$root/current/$program" "/usr/local/bin/$program"
 done
+install -d -m 755 /usr/local/sbin
+ln -s "$root/current/heurism-slot" /usr/local/sbin/heurism-slot
 echo "Heurism C image release sealed: $release"

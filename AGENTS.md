@@ -1,5 +1,20 @@
 # Current product direction
 
+On 2026-10-09 local / 2026-10-10 UTC, VM-only C `heurism-slot` was added to
+fresh images for inactive-root verification, one-time B queue, health-gated
+B renewal and fallback. Its exact-DMI/layout guards reject the current
+single-root VM and Dell. The final isolated candidate VHDX SHA256 is
+`bde276fe736d31f6142f7f0b500f25fb3b41a6824bd843063049f8d19aadc023`.
+It rejected altered B init and a missing B SSH service link, booted healthy
+B `7ea3012c-4ff8-4e41-ab60-4e46a1ad9310`, renewed after 50 seconds and
+cleared the renewal for A. A separate injected B startup hang in an earlier
+candidate was reset by the explicit Hyper-V host gate and returned healthy A;
+the final manifest now protects `/sbin/init`. The candidate is off, and
+`CompanionDev` is healthy on boot `ab3f3709-0a9b-486f-978b-c289430add29`
+with its earlier single-root disk and pinned identity. The Dell was untouched.
+Signed inactive-root staging, automatic renewal, a persistent host watcher
+and an independent physical recovery channel remain. See `docs/ab-updates.md`.
+
 On 2026-10-09 local / 2026-10-10 UTC, the fresh VM image builder gained a
 four-partition A/B layout with shared `/var/lib/companion` data. The isolated
 `HeurismCandidate` VM booted A, one-time B, then A, preserving the same data

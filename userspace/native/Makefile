@@ -10,7 +10,7 @@ CONTROL_CFLAGS = $(shell $(PKG_CONFIG) --cflags json-c)
 CONTROL_LIBS = $(shell $(PKG_CONFIG) --libs json-c)
 
 .PHONY: all clean
-all: heurism-sh heurism-terminal heurism-control heurismctl heurism-desktop heurism-app heurism-session-config heurism-release
+all: heurism-sh heurism-terminal heurism-control heurismctl heurism-desktop heurism-app heurism-session-config heurism-release heurism-slot
 
 heurism-sh: heurism-sh.c
 	$(CC) $(STRICT_CFLAGS) $(CFLAGS) -o $@ $<
@@ -36,5 +36,8 @@ heurism-session-config: heurism-session-config.c
 heurism-release: heurism-release.c
 	$(CC) $(STRICT_CFLAGS) $(CFLAGS) $(CONTROL_CFLAGS) -o $@ $< $(CONTROL_LIBS)
 
+heurism-slot: heurism-slot.c
+	$(CC) $(STRICT_CFLAGS) $(CFLAGS) -o $@ $<
+
 clean:
-	rm -f heurism-sh heurism-terminal heurism-control heurismctl heurism-desktop heurism-app heurism-session-config heurism-release
+	rm -f heurism-sh heurism-terminal heurism-control heurismctl heurism-desktop heurism-app heurism-session-config heurism-release heurism-slot
