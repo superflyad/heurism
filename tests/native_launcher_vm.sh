@@ -81,7 +81,15 @@ desktop=$!
 sleep 3
 export DISPLAY=:91 XAUTHORITY=/dev/null
 xdotool search --name '^Heurism panel$' >/dev/null
+xprop -root _NET_NUMBER_OF_DESKTOPS | grep -q ' = 4$'
 xwd -root -silent -out "$work/workspace.xwd"
+xdotool mousemove 305 24 click 1
+sleep 1
+xprop -root _NET_CURRENT_DESKTOP | grep -q ' = 1$'
+xwd -root -silent -out "$work/workspace-2.xwd"
+xdotool mousemove 262 24 click 1
+sleep 1
+xprop -root _NET_CURRENT_DESKTOP | grep -q ' = 0$'
 xdotool mousemove "$launcher_x" "$dock_click_y" click 1
 sleep 2
 launcher=$(xdotool search --name '^Heurism Launcher$' | tail -n 1)
@@ -100,6 +108,22 @@ terminal=$(xdotool search --name 'Heurism C Terminal' | tail -n 1)
 test -n "$terminal"
 if xdotool search --name '^Heurism Launcher$' >/dev/null 2>&1; then exit 1; fi
 xdotool windowactivate --sync "$terminal"
+xdotool key --clearmodifiers super+shift+2
+sleep 1
+xprop -id "$terminal" _NET_WM_DESKTOP | grep -q ' = 1$'
+xprop -root _NET_CURRENT_DESKTOP | grep -q ' = 1$'
+xdotool key --clearmodifiers super+1
+sleep 1
+xprop -root _NET_CURRENT_DESKTOP | grep -q ' = 0$'
+xdotool mousemove "$((dock_left + 400))" "$dock_click_y" click 1
+sleep 1
+xprop -root _NET_CURRENT_DESKTOP | grep -q ' = 1$'
+test "$(xdotool getactivewindow)" = "$terminal"
+xdotool windowactivate --sync "$terminal"
+xdotool key --clearmodifiers super+shift+1
+sleep 1
+xprop -id "$terminal" _NET_WM_DESKTOP | grep -q ' = 0$'
+xprop -root _NET_CURRENT_DESKTOP | grep -q ' = 0$'
 xdotool key --clearmodifiers super+space
 sleep 1
 launcher=$(xdotool search --name '^Heurism Launcher$' | tail -n 1)
@@ -240,4 +264,4 @@ xdotool key Return
 sleep 1
 xdotool search --name '^Heurism Launcher$' >/dev/null
 xdotool key Escape
-echo "C launcher, installed apps, local file search, hidden-file exclusion, window switching and quick controls passed; captures: $work/workspace.xwd $work/launcher.xwd $work/window-switch.xwd $work/quick-controls.xwd $work/installed-app.xwd $work/local-file.xwd $work/hidden-file.xwd"
+echo "C launcher, four workspaces, moving windows, installed apps, local file search, hidden-file exclusion, window switching and quick controls passed; captures: $work/workspace.xwd $work/workspace-2.xwd $work/launcher.xwd $work/window-switch.xwd $work/quick-controls.xwd $work/installed-app.xwd $work/local-file.xwd $work/hidden-file.xwd"

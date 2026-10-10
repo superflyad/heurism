@@ -37,7 +37,8 @@ enum action { NONE, SHOW_WORKSPACE, SHOW_MENU, SHOW_OVERVIEW, SHOW_SETTINGS,
               LOCK_DESKTOP, LAUNCH_FILES, LAUNCH_EDITOR, LAUNCH_INSTALLED,
               OPEN_LOCAL,
               LAUNCH_BROWSER, LAUNCH_TERMINAL, LAUNCH_KEYBOARD, TOGGLE_THEME,
-              SWITCH_TASK, MINIMIZE_TASKS, ADMIN_CONSOLE, RESTART_VM, SHUT_DOWN_VM,
+              SWITCH_TASK, SWITCH_WORKSPACE, MOVE_WINDOW_WORKSPACE,
+              MINIMIZE_TASKS, ADMIN_CONSOLE, RESTART_VM, SHUT_DOWN_VM,
               BRIGHTER, DIMMER, TAP_TOGGLE, SCROLL_TOGGLE, SPEED_UP, SPEED_DOWN,
               WIFI_SCAN, WIFI_SELECT, WIFI_CONNECT, WIFI_PASSWORD,
               SOUND_LEFT_UP, SOUND_LEFT_DOWN, SOUND_RIGHT_UP, SOUND_RIGHT_DOWN,
@@ -59,10 +60,12 @@ struct desktop {
     XftFont *font_small, *font_body, *font_large;
     Atom type_atom, desktop_atom, dock_atom, state_atom, skip_taskbar_atom;
     Atom strut_atom, client_list_atom, active_atom;
+    Atom current_workspace_atom, workspace_count_atom, window_workspace_atom;
     struct hit hits[MAX_HITS];
     int hit_count;
     struct task tasks[MAX_TASKS];
     int task_count;
+    unsigned workspace_count, current_workspace;
     enum page page;
     bool light;
     char address[64], hostname[128], kernel[128], notice[160];
@@ -436,6 +439,33 @@ static bool is_shell_window(struct desktop *d, Window window) {
     return skip;
 }
 
+static bool cardinal_property(struct desktop *d, Window window, Atom property,
+                              unsigned long *value) {
+    Atom actual;
+    int format;
+    unsigned long count, remaining;
+    unsigned char *data = NULL;
+    int status = XGetWindowProperty(d->display, window, property, 0, 1, False,
+                                    XA_CARDINAL, &actual, &format, &count,
+                                    &remaining, &data);
+    bool valid = status == Success && actual == XA_CARDINAL && format == 32 &&
+                 count == 1 && data;
+    if (valid) *value = ((unsigned long *)data)[0];
+    if (data) XFree(data);
+    return valid;
+}
+
+static void refresh_workspaces(struct desktop *d) {
+    Window root = RootWindow(d->display, d->screen);
+    unsigned long count = 1, current = 0;
+    cardinal_property(d, root, d->workspace_count_atom, &count);
+    cardinal_property(d, root, d->current_workspace_atom, &current);
+    if (count < 1) count = 1;
+    if (count > 8) count = 8;
+    d->workspace_count = (unsigned)count;
+    d->current_workspace = current < count ? (unsigned)current : 0;
+}
+
 static void refresh_tasks(struct desktop *d) {
     d->task_count = 0;
     Atom actual;
@@ -538,8 +568,20 @@ static void render_panel(struct desktop *d) {
     label(d, d->panel, 27, 32, d->font_small, "H", 12, 32, 45);
     label(d, d->panel, 59, 32, d->font_body, "Heurism", 237, 244, 249);
     fill(d, d->panel, 159, 15, 1, 20, 75, 91, 107);
-    label(d, d->panel, 176, 32, d->font_small, "Workspace 1", 165, 183, 201);
-    hit(d, d->panel, 12, 0, 285, 48, SHOW_MENU, 0);
+    label(d, d->panel, 176, 32, d->font_small, "Spaces", 165, 183, 201);
+    hit(d, d->panel, 12, 0, 147, 48, SHOW_MENU, 0);
+    for (unsigned i = 0; i < d->workspace_count; i++) {
+        int x = 244 + (int)i * 43;
+        bool active = i == d->current_workspace;
+        rounded(d, d->panel, x, 9, 36, 30, 7,
+                active ? 75 : 35, active ? 219 : 49, active ? 194 : 67);
+        char number[3];
+        snprintf(number, sizeof number, "%u", i + 1);
+        label(d, d->panel, x + 18 - label_width(d, d->font_small, number) / 2,
+              31, d->font_small, number,
+              active ? 12 : 196, active ? 32 : 212, active ? 45 : 224);
+        hit(d, d->panel, x, 3, 36, 42, SWITCH_WORKSPACE, (int)i);
+    }
     time_t now = time(NULL);
     struct tm local;
     localtime_r(&now, &local);
@@ -1074,14 +1116,20 @@ static void launch_self(struct desktop *d, const char *argument) {
     launch(d, path, argument);
 }
 
+static void switch_workspace(struct desktop *d, int index);
+
 static void activate_window(struct desktop *d, Window window) {
+    unsigned long workspace;
+    if (cardinal_property(d, window, d->window_workspace_atom, &workspace) &&
+        workspace < d->workspace_count && workspace != d->current_workspace)
+        switch_workspace(d, (int)workspace);
     XMapRaised(d->display, window);
     XEvent event = {0};
     event.xclient.type = ClientMessage;
     event.xclient.window = window;
     event.xclient.message_type = d->active_atom;
     event.xclient.format = 32;
-    event.xclient.data.l[0] = 1;
+    event.xclient.data.l[0] = 2;
     XSendEvent(d->display, RootWindow(d->display, d->screen), False,
                SubstructureRedirectMask | SubstructureNotifyMask, &event);
 }
@@ -1089,6 +1137,50 @@ static void activate_window(struct desktop *d, Window window) {
 static void activate_task(struct desktop *d, int index) {
     if (index >= 0 && index < d->task_count)
         activate_window(d, d->tasks[index].window);
+}
+
+static void switch_workspace(struct desktop *d, int index) {
+    if (index < 0 || (unsigned)index >= d->workspace_count) return;
+    Window root = RootWindow(d->display, d->screen);
+    XEvent event = {0};
+    event.xclient.type = ClientMessage;
+    event.xclient.window = root;
+    event.xclient.message_type = d->current_workspace_atom;
+    event.xclient.format = 32;
+    event.xclient.data.l[0] = index;
+    event.xclient.data.l[1] = CurrentTime;
+    XSendEvent(d->display, root, False,
+               SubstructureRedirectMask | SubstructureNotifyMask, &event);
+    XFlush(d->display);
+}
+
+static void move_active_window(struct desktop *d, int index) {
+    if (index < 0 || (unsigned)index >= d->workspace_count) return;
+    Window root = RootWindow(d->display, d->screen);
+    Atom actual;
+    int format;
+    unsigned long count, remaining;
+    unsigned char *data = NULL;
+    if (XGetWindowProperty(d->display, root, d->active_atom, 0, 1, False,
+                           XA_WINDOW, &actual, &format, &count, &remaining,
+                           &data) != Success || actual != XA_WINDOW ||
+        format != 32 || count != 1 || !data) {
+        if (data) XFree(data);
+        return;
+    }
+    Window window = ((Window *)data)[0];
+    XFree(data);
+    if (!window || is_shell_window(d, window)) return;
+    XEvent event = {0};
+    event.xclient.type = ClientMessage;
+    event.xclient.window = window;
+    event.xclient.message_type = d->window_workspace_atom;
+    event.xclient.format = 32;
+    event.xclient.data.l[0] = index;
+    event.xclient.data.l[1] = 2;
+    XSendEvent(d->display, root, False,
+               SubstructureRedirectMask | SubstructureNotifyMask, &event);
+    switch_workspace(d, index);
 }
 
 static void open_panel(struct desktop *d, const char *selection_name, const char *argument) {
@@ -1179,6 +1271,8 @@ static void run_action(struct desktop *d, enum action action, int index) {
         break;
     }
     case SWITCH_TASK: activate_task(d, index); break;
+    case SWITCH_WORKSPACE: switch_workspace(d, index); break;
+    case MOVE_WINDOW_WORKSPACE: move_active_window(d, index); break;
     case MINIMIZE_TASKS:
         for (int i = 0; i < d->task_count; i++) XIconifyWindow(d->display, d->tasks[i].window, d->screen);
         d->page = WORKSPACE;
@@ -1392,9 +1486,26 @@ static void install_launcher_shortcut(struct desktop *d) {
         }
         XSync(d->display, False);
     }
+    KeySym spaces[] = {XK_1, XK_2, XK_3, XK_4};
+    unsigned extras[] = {0, LockMask, numlock, LockMask | numlock};
+    for (size_t i = 0; i < sizeof spaces / sizeof spaces[0]; i++) {
+        KeyCode code = XKeysymToKeycode(d->display, spaces[i]);
+        if (!code) continue;
+        for (int shifted = 0; shifted < 2; shifted++)
+            for (size_t extra = 0; extra < sizeof extras / sizeof extras[0]; extra++) {
+                bool duplicate = false;
+                for (size_t prior = 0; prior < extra; prior++)
+                    if (extras[prior] == extras[extra]) duplicate = true;
+                if (!duplicate)
+                    XGrabKey(d->display, code,
+                             Mod4Mask | (shifted ? ShiftMask : 0) | extras[extra],
+                             root, False, GrabModeAsync, GrabModeAsync);
+            }
+    }
+    XSync(d->display, False);
     XSetErrorHandler(previous_x_error);
     if (shortcut_grab_failed)
-        fprintf(stderr, "Heurism launcher: Super+Space grab unavailable for some modifiers\n");
+        fprintf(stderr, "Heurism shortcuts: some Super key grabs are unavailable\n");
 }
 
 static bool setup_x(struct desktop *d) {
@@ -1439,6 +1550,9 @@ static bool setup_x(struct desktop *d) {
     d->strut_atom = XInternAtom(d->display, "_NET_WM_STRUT", False);
     d->client_list_atom = XInternAtom(d->display, "_NET_CLIENT_LIST", False);
     d->active_atom = XInternAtom(d->display, "_NET_ACTIVE_WINDOW", False);
+    d->current_workspace_atom = XInternAtom(d->display, "_NET_CURRENT_DESKTOP", False);
+    d->workspace_count_atom = XInternAtom(d->display, "_NET_NUMBER_OF_DESKTOPS", False);
+    d->window_workspace_atom = XInternAtom(d->display, "_NET_WM_DESKTOP", False);
     Window root = RootWindow(d->display, d->screen);
     int window_x = d->settings_mode ? (screen_width - d->width) / 2 : 0;
     int window_y = d->settings_mode ? (screen_height - d->height) / 2 : 0;
@@ -1601,6 +1715,7 @@ int main(int argc, char **argv) {
     if (!d.settings_mode) install_launcher_shortcut(&d);
     refresh_status(&d);
     refresh_page(&d);
+    refresh_workspaces(&d);
     refresh_tasks(&d);
     if (!d.settings_mode) ensure_visible(&d);
     redraw(&d);
@@ -1623,10 +1738,19 @@ int main(int argc, char **argv) {
                 }
             } else if (event.type == KeyPress) {
                 KeySym key = XLookupKeysym(&event.xkey, 0);
-                if (!d.settings_mode && event.xkey.window == RootWindow(d.display, d.screen) &&
-                    key == XK_space && (event.xkey.state & Mod4Mask)) {
-                    run_action(&d, SHOW_MENU, 0);
-                    continue;
+                if (!d.settings_mode &&
+                    event.xkey.window == RootWindow(d.display, d.screen) &&
+                    (event.xkey.state & Mod4Mask)) {
+                    if (key == XK_space) {
+                        run_action(&d, SHOW_MENU, 0);
+                        continue;
+                    }
+                    if (key >= XK_1 && key <= XK_4) {
+                        run_action(&d, event.xkey.state & ShiftMask ?
+                                   MOVE_WINDOW_WORKSPACE : SWITCH_WORKSPACE,
+                                   (int)(key - XK_1));
+                        continue;
+                    }
                 }
                 if (d.launcher_mode) {
                     int count = launcher_count(&d);
@@ -1711,6 +1835,7 @@ int main(int argc, char **argv) {
             last_network_refresh = now;
         }
         refresh_tasks(&d);
+        refresh_workspaces(&d);
         if (!d.settings_mode) ensure_visible(&d);
         redraw(&d);
         XSync(d.display, False);

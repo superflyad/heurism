@@ -129,3 +129,40 @@ temporary build packages were removed. `BootCurrent` is `0005` and
 The launcher still accepts only ASCII typed input, and the bounded scan is
 not a full content index. Unicode input, search ranking, multi-workspace
 navigation and consistent Editor/Settings layout remain open desktop work.
+
+## Four functional spaces, 2026-10-10
+
+Both the VM and Dell already had four Xfwm workspaces, but the C panel showed
+the fixed text "Workspace 1" and offered no switching. The panel now reads
+`_NET_NUMBER_OF_DESKTOPS` and `_NET_CURRENT_DESKTOP` and displays clickable
+numbered spaces with the active space highlighted. Super+1 through Super+4
+switches spaces; Super+Shift+number moves the active window to that space and
+follows it. The dock reads a task's `_NET_WM_DESKTOP` before activation, so a
+task on another space brings its space forward. Xfwm remains the window
+manager; the C shell sends EWMH requests and does not rewrite its state.
+
+The isolated 1280×800 VM test verified panel clicks, keyboard switching,
+moving a terminal to Space 2, returning to Space 1, reopening that terminal
+from the dock and moving it back. The captured second space is
+`build/prime-vm/heurism-workspace-2.png`. Existing launcher, search, settings
+and quick controls passed in the same run. The sealed VM release
+`/opt/heurism/native/releases/heurism-os-20261010T164527Z-42920` survived a
+checked reboot to fresh boot `f209044e-a69c-49c3-8be5-5a38ae20919f`.
+Checkpoint `Heurism-four-spaces-20261010T1650` has UUID
+`4daeff76-55c6-4ff1-9092-571c679929cf`.
+
+The Dell's isolated 1920×1080 gate proved the same panel, keyboard, move and
+dock behavior without changing display `:0`. Its Dell-only assembly passed
+the shell, control, hardware, apps and sealed-release corruption checks. The
+guarded activation selected
+`/opt/heurism/native/releases/heurism-os-dell-20261010T164918Z-26495`.
+On existing boot `edb102d9-25c6-409c-aa17-181fea3eaf41`, the live UID-1000
+workspace, SSH, watch, control, protected hashes and four-workspace EWMH state
+passed after temporary build packages were removed. `BootCurrent` is `0005`,
+`BootOrder` is `0005,0000`. No Dell reboot or live workspace switch was made.
+
+Workspace occupancy and window previews are still absent. Shortcut grabs may
+be unavailable if another window manager configuration claims the same keys;
+the clickable panel remains available in that case. Touch ergonomics,
+Unicode search input, Editor and Settings consistency, notifications and
+accessibility remain open.

@@ -66,6 +66,13 @@ export DISPLAY=:93 XAUTHORITY="$work/Xauthority"
 xdotool search --name '^Heurism dock$' >/dev/null
 xdotool search --name '^Heurism panel$' >/dev/null
 xdotool getdisplaygeometry | grep -Fxq '1920 1080'
+xprop -root _NET_NUMBER_OF_DESKTOPS | grep -q ' = 4$'
+xdotool mousemove 305 24 click 1
+sleep 1
+xprop -root _NET_CURRENT_DESKTOP | grep -q ' = 1$'
+xdotool mousemove 262 24 click 1
+sleep 1
+xprop -root _NET_CURRENT_DESKTOP | grep -q ' = 0$'
 mkdir -p /var/lib/companion/native-stage/evidence
 xwd -root -silent -out /var/lib/companion/native-stage/evidence/heurism-dell-workspace.xwd
 xdotool mousemove 1270 1028 click 1
@@ -89,6 +96,21 @@ sleep 2
 terminal=$(xdotool search --name 'Heurism C Terminal' | tail -n 1)
 test -n "$terminal"
 xdotool windowactivate --sync "$terminal"
+xdotool key --clearmodifiers super+shift+2
+sleep 1
+xprop -id "$terminal" _NET_WM_DESKTOP | grep -q ' = 1$'
+xprop -root _NET_CURRENT_DESKTOP | grep -q ' = 1$'
+xdotool key --clearmodifiers super+1
+sleep 1
+xprop -root _NET_CURRENT_DESKTOP | grep -q ' = 0$'
+xdotool mousemove 1000 1028 click 1
+sleep 1
+xprop -root _NET_CURRENT_DESKTOP | grep -q ' = 1$'
+test "$(xdotool getactivewindow)" = "$terminal"
+xdotool windowactivate --sync "$terminal"
+xdotool key --clearmodifiers super+shift+1
+sleep 1
+xprop -id "$terminal" _NET_WM_DESKTOP | grep -q ' = 0$'
 xdotool key --clearmodifiers super+space
 sleep 1
 launcher=$(xdotool search --name '^Heurism Launcher$' | tail -n 1)
@@ -104,4 +126,4 @@ rc-service heurism-desktop status >/dev/null
 rc-service heurism-control status >/dev/null
 rc-service companion-watch status >/dev/null
 rc-service sshd status >/dev/null
-echo 'Dell-size isolated C workspace, quick controls, local file search and terminal passed; :0 unchanged'
+echo 'Dell-size isolated C four-workspace switching, window move, quick controls, local file search and terminal passed; :0 unchanged'
