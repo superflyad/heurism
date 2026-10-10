@@ -85,5 +85,32 @@ DISPLAY=:2 xdotool type --clearmodifiers --window "$editor" '!'
 DISPLAY=:2 xdotool key --window "$editor" ctrl+s
 sleep 1
 test "$(cat "$workspace/seed.txt")" = 'native start!'
+DISPLAY=:2 xdotool key --window "$editor" ctrl+a ctrl+c
+su -s /bin/sh -c "printf 'target ' >$workspace/clip.txt" companion-ui
+su -s /bin/sh -c "DISPLAY=:2 HOME=$workspace exec $directory/heurism-editor $workspace/clip.txt" companion-ui \
+    >"$directory/clip-editor.log" 2>&1 &
+attempt=0
+until clip_editor=$(DISPLAY=:2 xdotool search --name '^Heurism Editor$' | tail -n 1) &&
+      [ -n "$clip_editor" ] && [ "$clip_editor" != "$editor" ]; do
+    attempt=$((attempt + 1))
+    test "$attempt" -lt 15
+    sleep 1
+done
+DISPLAY=:2 xdotool windowactivate --sync "$clip_editor"
+DISPLAY=:2 xdotool key --window "$clip_editor" ctrl+End ctrl+v
+sleep 1
+DISPLAY=:2 xdotool key --window "$clip_editor" ctrl+s
+sleep 1
+test "$(cat "$workspace/clip.txt")" = 'target native start!'
+DISPLAY=:2 xdotool windowactivate --sync "$editor"
+DISPLAY=:2 xdotool key --window "$editor" ctrl+a ctrl+x ctrl+s
+sleep 1
+test ! -s "$workspace/seed.txt"
+DISPLAY=:2 xdotool windowactivate --sync "$clip_editor"
+DISPLAY=:2 xdotool key --window "$clip_editor" ctrl+End ctrl+v
+sleep 1
+DISPLAY=:2 xdotool key --window "$clip_editor" ctrl+s
+sleep 1
+test "$(cat "$workspace/clip.txt")" = 'target native start!native start!'
 test "$(stat -c %u "$workspace/seed.txt")" = 1000
-echo 'Dell native Files and Editor pointer, undo, redo and save checks passed'
+echo 'Dell native Files and Editor pointer, undo, redo, save and two-window clipboard checks passed'

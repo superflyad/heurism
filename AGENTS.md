@@ -1,5 +1,21 @@
 # Current product direction
 
+On 2026-10-10 C Editor 0.5 gained range selection with Shift, pointer drag,
+Ctrl+A/C/X/V, PRIMARY middle-click paste, selection-aware editing and undo,
+and X11 CLIPBOARD interoperability including large INCR transfers. Isolated
+VM two-Editor and external-owner tests, the full VM release gate, and the
+Dell-size isolated app/full release gates passed. The active VM release is
+`/opt/heurism/native/releases/heurism-os-20261010T184600Z-87843`; checked
+reboot returned fresh boot `12190bdb-8fcc-4366-996b-fa2a3d6e4746` with
+UID-1000 UI and management healthy. Checkpoint
+`Heurism-Editor-clipboard-20261010` has UUID
+`1e329a3e-8fad-4b03-8986-932f9b694665`. The active Dell release is
+`/opt/heurism/native/releases/heurism-os-dell-20261010T184528Z-30288` on
+unchanged boot `edb102d9-25c6-409c-aa17-181fea3eaf41`. Live release,
+SSH/watch/control/UI, eight protected hashes and default SSD orders passed.
+No Dell reboot or physical touch acceptance was performed. See
+`docs/heurism-modern-workspace.md`.
+
 On 2026-10-10 Spaces changed from four dense cards to one selected workspace
 preview, a window list, and four space tabs. Its left/right placement controls
 now have 44-pixel targets; selecting a tab previews a space, while Open space,

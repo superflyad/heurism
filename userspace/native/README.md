@@ -50,7 +50,7 @@ separate from either user session. See [VM shell evidence](../../docs/heurism-sh
 and [Xfce recovery](../../docs/xfce-bridge.md).
 
 The active development VM release is selected by `/opt/heurism/native/current`
-and is `/opt/heurism/native/releases/heurism-os-20261010T181435Z-31737`.
+and is `/opt/heurism/native/releases/heurism-os-20261010T184600Z-87843`.
 See [the launcher evidence](../../docs/heurism-launcher.md).
 The separate fresh-image candidate uses `install-image-vm.sh` during image
 construction. It seals the compiled C binaries before first boot, installs
@@ -66,10 +66,11 @@ session can fall back to the sealed legacy UI if its own X startup fails. Root
 SSH and `companion-watch` run independently of the desktop. Do not deploy this
 VM installer on the Dell. The Dell has its own exact-DMI installer,
 `install-native-dell.sh`, and the active sealed release
-`/opt/heurism/native/releases/heurism-os-dell-20261010T181420Z-8830`. It
+`/opt/heurism/native/releases/heurism-os-dell-20261010T184528Z-30288`. It
 adds the window-first C workspace, launcher, quick controls and refined Heurism
-window theme to the earlier shell and clipboard terminal. This release was activated
+window theme and Editor clipboard to the earlier shell and terminal. This release was activated
 without an OS reboot. See [the Dell live-session record](../../docs/heurism-dell-live-session.md),
+[the Editor clipboard evidence](../../docs/heurism-modern-workspace.md),
 [the shell completion record](../../docs/shell-completion.md) and
 [the earlier Dell restart record](../../docs/dell-terminal-20261009.md). The Dell
 installer's `assemble` action does not switch services. `activate` changes
@@ -103,6 +104,11 @@ window title and has [X11 text selection and clipboard](../../docs/terminal-clip
 The Dell now runs the same sealed terminal binary. Live PTY completion and
 cross-app clipboard paste passed there; selection/copy remains a physical
 acceptance item.
+Editor 0.5 supports keyboard and pointer selection, cut/copy/paste through X11
+CLIPBOARD, PRIMARY selection and middle-click paste. The isolated VM gate
+verified transfers between two Editors and an external X11 clipboard owner,
+including 320 KiB text. The Dell isolated app gate passed; live physical touch
+and clipboard acceptance on the Dell remain unobserved.
 The VM includes a WenQuanYi fallback for tested CJK glyphs. Broader Unicode
 coverage, wide-character alignment, application mouse reporting and
 accessibility remain open.

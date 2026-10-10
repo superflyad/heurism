@@ -371,3 +371,34 @@ five windows at 1280×800 or six at 1920×1080 currently shows an overflow
 count without a way to reach the rest in this view. That needs scrolling or
 search. The workspace diagram is still illustrative. Editor clipboard,
 Unicode search, shared app styling and accessibility remain major work.
+
+## C Editor selection and clipboard, 2026-10-10
+
+Editor 0.5 adds selection by Shift and pointer drag, Ctrl+A/C/X/V, and
+middle-click PRIMARY paste at the pointer. A selected range is highlighted,
+shown in the footer, and used by typing, Delete, Backspace, cut, paste and
+undo. Editor owns X11 CLIPBOARD and PRIMARY selections and accepts UTF8_STRING
+and STRING from other X11 clients. It handles incremental clipboard transfers
+with a 4 MiB input limit and rejects invalid UTF-8 or embedded NULs.
+
+The isolated VM test exercised two Editors, pointer and keyboard selection,
+Unicode copy/cut/paste, replacement, undo/redo, and external `xclip` transfers
+including a 320 KiB selection. The rendered selected text is
+`build/prime-vm/editor-selection.png`. The complete VM installer gate passed.
+The guarded VM activation selected
+`/opt/heurism/native/releases/heurism-os-20261010T184600Z-87843`; checked
+reboot returned fresh boot `12190bdb-8fcc-4366-996b-fa2a3d6e4746` with
+release verification, UID-1000 UI, SSH, watch and control healthy. Checkpoint
+`Heurism-Editor-clipboard-20261010` has UUID
+`1e329a3e-8fad-4b03-8986-932f9b694665`.
+
+The Dell isolated two-Editor test and complete Dell assembly gate passed. The
+guarded installer activated
+`/opt/heurism/native/releases/heurism-os-dell-20261010T184528Z-30288` on
+unchanged boot `edb102d9-25c6-409c-aa17-181fea3eaf41`. Live release,
+UID-1000 desktop, root SSH, watch, control, eight protected hashes and
+default SSD orders passed after temporary build packages were removed. The
+Dell was not rebooted; physical touch and clipboard acceptance remain open.
+X11 selection contents depend on the owning process remaining alive unless a
+clipboard manager preserves them. Find/replace, Unicode workspace search,
+consistent app styling and accessibility remain desktop work.

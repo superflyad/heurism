@@ -1,6 +1,7 @@
 #define _GNU_SOURCE
 /* Heurism Files and Editor share one small X11/Xft executable. */
 #include <X11/Xlib.h>
+#include <X11/Xatom.h>
 #include <X11/Xutil.h>
 #include <X11/keysym.h>
 #include <X11/Xft/Xft.h>
@@ -46,6 +47,7 @@ struct app {
     Display *display;
     Window window;
     Atom delete_window;
+    Atom clipboard, utf8, targets, incr, paste_property;
     Visual *visual;
     GC gc;
     XftDraw *draw;
@@ -64,7 +66,14 @@ struct app {
     struct button buttons[12];
     int button_count;
     char *text;
-    size_t length, capacity, cursor;
+    size_t length, capacity, cursor, anchor;
+    bool selecting, owns_primary, owns_clipboard;
+    char *primary_text, *clipboard_text, *paste_text;
+    size_t primary_length, clipboard_length, paste_length;
+    Atom pending_paste, paste_target;
+    bool paste_incr;
+    size_t paste_start, paste_end;
+    time_t paste_deadline;
     int scroll_line, scroll_column;
     struct edit undo[MAX_UNDO];
     int undo_count, undo_position;
@@ -370,6 +379,7 @@ static bool set_file(struct app *a, const char *path) {
     a->length = length;
     a->capacity = length + 1;
     a->cursor = 0;
+    a->anchor = 0;
     a->scroll_line = a->scroll_column = 0;
     clear_undo(a);
     a->dirty = false;
@@ -459,6 +469,7 @@ static bool load_draft(struct app *a) {
             a->text = restored;
             a->capacity = a->length + 1;
             a->cursor = a->length;
+            a->anchor = a->cursor;
             clear_undo(a);
             a->dirty = true;
             a->file[0] = 0;
@@ -687,6 +698,7 @@ static void command(struct app *a, enum command action) {
         if (a->dirty) snprintf(a->notice, sizeof a->notice, "Save this draft before creating another document");
         else {
             a->length = a->cursor = 0;
+            a->anchor = 0;
             a->text[0] = a->file[0] = 0;
             a->scroll_line = a->scroll_column = 0;
             clear_undo(a);
@@ -739,6 +751,7 @@ static bool replace_bytes(struct app *a, size_t start, size_t removed,
     if (added) memcpy(a->text + start, inserted, added);
     a->length = new_length;
     a->cursor = start + added;
+    a->anchor = a->cursor;
     a->dirty = true;
     return true;
 }
@@ -802,7 +815,9 @@ static void edit_text(struct app *a, size_t start, size_t end,
 }
 
 static void insert_text(struct app *a, const char *bytes, size_t count) {
-    edit_text(a, a->cursor, a->cursor, bytes, count);
+    size_t start = a->anchor < a->cursor ? a->anchor : a->cursor;
+    size_t end = a->anchor > a->cursor ? a->anchor : a->cursor;
+    edit_text(a, start, end, bytes, count);
 }
 
 static void delete_range(struct app *a, size_t start, size_t end) {
@@ -818,9 +833,195 @@ static void undo_edit(struct app *a, bool redo) {
                       redo ? change->inserted : change->removed,
                       redo ? change->inserted_len : change->removed_len)) {
         a->cursor = redo ? change->start + change->inserted_len : change->cursor_before;
+        a->anchor = a->cursor;
         a->undo_position += redo ? 1 : -1;
         snprintf(a->notice, sizeof a->notice, redo ? "Redone" : "Undone");
     }
+}
+
+static void ensure_cursor_visible(struct app *a);
+
+static bool selected_range(struct app *a, size_t *start, size_t *end) {
+    *start = a->anchor < a->cursor ? a->anchor : a->cursor;
+    *end = a->anchor > a->cursor ? a->anchor : a->cursor;
+    return *start < *end;
+}
+
+static bool own_selection(struct app *a, Atom selection, Time time) {
+    size_t start, end;
+    if (!selected_range(a, &start, &end)) return false;
+    char *copy = malloc(end - start + 1);
+    if (!copy) {
+        snprintf(a->notice, sizeof a->notice, "Out of memory");
+        return false;
+    }
+    memcpy(copy, a->text + start, end - start);
+    copy[end - start] = 0;
+    char **slot = selection == XA_PRIMARY ? &a->primary_text : &a->clipboard_text;
+    size_t *length = selection == XA_PRIMARY ? &a->primary_length : &a->clipboard_length;
+    bool *owned = selection == XA_PRIMARY ? &a->owns_primary : &a->owns_clipboard;
+    free(*slot);
+    *slot = copy;
+    *length = end - start;
+    XSetSelectionOwner(a->display, selection, a->window, time);
+    *owned = XGetSelectionOwner(a->display, selection) == a->window;
+    if (!*owned) snprintf(a->notice, sizeof a->notice, "Clipboard unavailable");
+    return *owned;
+}
+
+static void change_text_property(struct app *a, Window requestor, Atom property,
+                                 Atom type, const char *value, size_t length) {
+    size_t offset = 0;
+    do {
+        size_t chunk = length - offset;
+        if (chunk > 65536) chunk = 65536;
+        XChangeProperty(a->display, requestor, property, type, 8,
+                        offset ? PropModeAppend : PropModeReplace,
+                        (const unsigned char *)value + offset, (int)chunk);
+        offset += chunk;
+    } while (offset < length);
+}
+
+static void selection_request(struct app *a, XSelectionRequestEvent *request) {
+    XSelectionEvent reply = {.type = SelectionNotify, .display = a->display,
+        .requestor = request->requestor, .selection = request->selection,
+        .target = request->target, .property = None, .time = request->time};
+    bool primary = request->selection == XA_PRIMARY;
+    bool owned = primary ? a->owns_primary :
+                 request->selection == a->clipboard && a->owns_clipboard;
+    const char *value = primary ? a->primary_text : a->clipboard_text;
+    size_t length = primary ? a->primary_length : a->clipboard_length;
+    Atom property = request->property == None ? request->target : request->property;
+    if (owned && value) {
+        if (request->target == a->targets) {
+            Atom formats[] = {a->targets, a->utf8, XA_STRING};
+            XChangeProperty(a->display, request->requestor, property, XA_ATOM, 32,
+                            PropModeReplace, (unsigned char *)formats, 3);
+            reply.property = property;
+        } else if (request->target == a->utf8) {
+            change_text_property(a, request->requestor, property,
+                                 a->utf8, value, length);
+            reply.property = property;
+        } else if (request->target == XA_STRING) {
+            gsize converted_length = 0;
+            char *converted = g_convert_with_fallback(value, (gssize)length,
+                "ISO-8859-1", "UTF-8", "?", NULL, &converted_length, NULL);
+            if (converted) {
+                change_text_property(a, request->requestor, property,
+                                     XA_STRING, converted, converted_length);
+                reply.property = property;
+                g_free(converted);
+            }
+        }
+    }
+    XSendEvent(a->display, request->requestor, False, 0, (XEvent *)&reply);
+    XFlush(a->display);
+}
+
+static void cancel_paste(struct app *a, const char *notice) {
+    a->pending_paste = None;
+    a->paste_incr = false;
+    free(a->paste_text);
+    a->paste_text = NULL;
+    a->paste_length = 0;
+    XDeleteProperty(a->display, a->window, a->paste_property);
+    if (notice) snprintf(a->notice, sizeof a->notice, "%s", notice);
+}
+
+static bool append_paste(struct app *a, const unsigned char *data, size_t length) {
+    if (length > MAX_FILE - a->paste_length) return false;
+    char *larger = realloc(a->paste_text, a->paste_length + length + 1);
+    if (!larger) return false;
+    a->paste_text = larger;
+    if (length) memcpy(a->paste_text + a->paste_length, data, length);
+    a->paste_length += length;
+    a->paste_text[a->paste_length] = 0;
+    return true;
+}
+
+static void finish_paste(struct app *a) {
+    char *content = a->paste_text;
+    size_t length = a->paste_length;
+    char *converted = NULL;
+    if (a->paste_target == XA_STRING) {
+        gsize converted_length = 0;
+        converted = g_convert(content, (gssize)length, "UTF-8", "ISO-8859-1",
+                              NULL, &converted_length, NULL);
+        content = converted;
+        length = converted_length;
+    }
+    if (!content || length > MAX_FILE || memchr(content, 0, length) ||
+        !g_utf8_validate(content, (gssize)length, NULL)) {
+        cancel_paste(a, "Paste rejected: invalid or oversized text");
+    } else {
+        edit_text(a, a->paste_start, a->paste_end, content, length);
+        cancel_paste(a, NULL);
+        ensure_cursor_visible(a);
+    }
+    g_free(converted);
+}
+
+static void request_paste(struct app *a, Atom selection, Time event_time) {
+    if (a->pending_paste != None) return;
+    size_t start, end;
+    selected_range(a, &start, &end);
+    a->paste_start = start;
+    a->paste_end = end;
+    a->pending_paste = selection;
+    a->paste_target = a->utf8;
+    a->paste_deadline = time(NULL) + 10;
+    XConvertSelection(a->display, selection, a->paste_target,
+                      a->paste_property, a->window, event_time);
+}
+
+static void selection_notify(struct app *a, XSelectionEvent *event) {
+    if (event->selection != a->pending_paste) return;
+    if (event->property == None) {
+        if (a->paste_target == a->utf8) {
+            a->paste_target = XA_STRING;
+            XConvertSelection(a->display, event->selection, XA_STRING,
+                              a->paste_property, a->window, event->time);
+        } else cancel_paste(a, "Clipboard has no text");
+        return;
+    }
+    Atom type;
+    int format;
+    unsigned long count, remaining;
+    unsigned char *data = NULL;
+    int result = XGetWindowProperty(a->display, a->window, a->paste_property,
+                                    0, (MAX_FILE + 3) / 4, True, AnyPropertyType,
+                                    &type, &format, &count, &remaining, &data);
+    if (result == Success && type == a->incr && format == 32) {
+        a->paste_incr = true;
+        XDeleteProperty(a->display, a->window, a->paste_property);
+    } else if (result == Success && format == 8 && !remaining &&
+               (type == a->utf8 || type == XA_STRING) &&
+               append_paste(a, data, count)) {
+        a->paste_target = type;
+        finish_paste(a);
+    } else cancel_paste(a, "Paste rejected: invalid or oversized text");
+    if (data) XFree(data);
+}
+
+static void paste_property_notify(struct app *a, XPropertyEvent *event) {
+    if (!a->paste_incr || event->atom != a->paste_property ||
+        event->state != PropertyNewValue) return;
+    Atom type;
+    int format;
+    unsigned long count, remaining;
+    unsigned char *data = NULL;
+    int result = XGetWindowProperty(a->display, a->window, a->paste_property,
+                                    0, (MAX_FILE + 3) / 4, True, AnyPropertyType,
+                                    &type, &format, &count, &remaining, &data);
+    if (result != Success || format != 8 || remaining ||
+        (type != a->utf8 && type != XA_STRING) ||
+        !append_paste(a, data, count))
+        cancel_paste(a, "Paste rejected: invalid or oversized text");
+    else if (!count) {
+        a->paste_target = type;
+        finish_paste(a);
+    } else a->paste_deadline = time(NULL) + 10;
+    if (data) XFree(data);
 }
 
 static int cursor_line(struct app *a) {
@@ -1048,6 +1249,8 @@ static void render_editor(struct app *a) {
     }
     XRectangle content_clip = {80, EDITOR_ROW_TOP, (unsigned short)(a->width - 96),
                                (unsigned short)(a->height - EDITOR_ROW_TOP - 51)};
+    size_t selection_start, selection_end;
+    bool highlighted = selected_range(a, &selection_start, &selection_end);
     for (int row = 0; row < visible && offset <= a->length; row++) {
         size_t end = line_end(a->text, a->length, offset);
         int y = EDITOR_ROW_TOP + row * EDITOR_ROW_HEIGHT;
@@ -1062,8 +1265,27 @@ static void render_editor(struct app *a) {
         char content[1025];
         size_t count = visible_end - visible_start;
         if (count > sizeof content - 1) count = sizeof content - 1;
+        while (count && !g_utf8_validate(a->text + visible_start, (gssize)count, NULL))
+            count--;
         memcpy(content, a->text + visible_start, count);
         content[count] = 0;
+        if (highlighted) {
+            size_t first = selection_start > visible_start ? selection_start : visible_start;
+            size_t last = selection_end < visible_start + count ?
+                          selection_end : visible_start + count;
+            if (first < last) {
+                XGlyphInfo before, through;
+                XftTextExtentsUtf8(a->display, a->font, (FcChar8 *)content,
+                                   (int)(first - visible_start), &before);
+                XftTextExtentsUtf8(a->display, a->font, (FcChar8 *)content,
+                                   (int)(last - visible_start), &through);
+                int left = 84 + before.xOff, right = 84 + through.xOff;
+                if (left < 80) left = 80;
+                if (right > a->width - 16) right = a->width - 16;
+                box(a, left, y + 2, right - left, EDITOR_ROW_HEIGHT - 4,
+                    43, 117, 115);
+            }
+        }
         text(a, 84, y + 22, content, a->font, 235, 243, 247);
         if (a->cursor >= visible_start && a->cursor <= visible_end &&
             a->cursor >= offset && a->cursor <= end) {
@@ -1088,8 +1310,13 @@ static void render_editor(struct app *a) {
     } else {
         char status[128];
         int column = character_column(a->text, line_start(a->text, a->cursor), a->cursor);
-        snprintf(status, sizeof status, "Ln %d, Col %d  ·  UTF-8  ·  Ctrl+Z undo  ·  Ctrl+Y redo",
-                 cursor_line(a) + 1, column + 1);
+        if (highlighted)
+            snprintf(status, sizeof status,
+                     "Text selected  ·  Ctrl+C copy  ·  Ctrl+X cut  ·  Ctrl+V paste");
+        else
+            snprintf(status, sizeof status,
+                     "Ln %d, Col %d  ·  UTF-8  ·  Ctrl+Z undo  ·  Ctrl+Y redo",
+                     cursor_line(a) + 1, column + 1);
         if (a->notice[0] && a->width < 850)
             text(a, 24, a->height - 15, a->notice, a->font_small, 80, 225, 190);
         else {
@@ -1177,19 +1404,44 @@ static void keypress(struct app *a, XKeyEvent *event) {
         if (a->scroll < 0) a->scroll = 0;
         return;
     }
+    if (a->pending_paste != None) {
+        if (symbol == XK_Escape) cancel_paste(a, "Paste cancelled");
+        return;
+    }
+    bool shift = (event->state & ShiftMask) != 0;
     if (event->state & ControlMask) {
         if (symbol == XK_s || symbol == XK_S)
-            command(a, event->state & ShiftMask ? SAVE_AS : SAVE);
+            command(a, shift ? SAVE_AS : SAVE);
         else if (symbol == XK_o || symbol == XK_O) command(a, OPEN);
         else if (symbol == XK_n || symbol == XK_N) command(a, NEW);
-        else if (symbol == XK_z || symbol == XK_Z)
-            undo_edit(a, (event->state & ShiftMask) != 0);
+        else if (symbol == XK_z || symbol == XK_Z) undo_edit(a, shift);
         else if (symbol == XK_y || symbol == XK_Y) undo_edit(a, true);
-        else if (symbol == XK_Home) a->cursor = 0;
-        else if (symbol == XK_End) a->cursor = a->length;
+        else if (symbol == XK_a || symbol == XK_A) {
+            a->anchor = 0;
+            a->cursor = a->length;
+            own_selection(a, XA_PRIMARY, event->time);
+        } else if (symbol == XK_c || symbol == XK_C) {
+            if (own_selection(a, a->clipboard, event->time))
+                snprintf(a->notice, sizeof a->notice, "Copied to clipboard");
+            else snprintf(a->notice, sizeof a->notice, "Select text to copy");
+        } else if (symbol == XK_x || symbol == XK_X) {
+            size_t start, end;
+            if (selected_range(a, &start, &end) &&
+                own_selection(a, a->clipboard, event->time)) {
+                delete_range(a, start, end);
+                snprintf(a->notice, sizeof a->notice, "Cut to clipboard");
+            } else snprintf(a->notice, sizeof a->notice, "Select text to cut");
+        } else if (symbol == XK_v || symbol == XK_V)
+            request_paste(a, a->clipboard, event->time);
+        else if (symbol == XK_Home || symbol == XK_End) {
+            a->cursor = symbol == XK_Home ? 0 : a->length;
+            if (shift) own_selection(a, XA_PRIMARY, event->time);
+            else a->anchor = a->cursor;
+        }
         ensure_cursor_visible(a);
         return;
     }
+    bool moving = true;
     switch (symbol) {
     case XK_Left: a->cursor = previous_character(a->text, a->cursor); break;
     case XK_Right: a->cursor = next_character(a->text, a->length, a->cursor); break;
@@ -1201,24 +1453,44 @@ static void keypress(struct app *a, XKeyEvent *event) {
     case XK_End:
         while (a->cursor < a->length && a->text[a->cursor] != '\n') a->cursor++;
         break;
+    case XK_Escape: a->anchor = a->cursor; break;
     case XK_BackSpace:
-        if (a->cursor) delete_range(a, previous_character(a->text, a->cursor), a->cursor);
+        moving = false;
+        if (a->anchor != a->cursor) insert_text(a, NULL, 0);
+        else if (a->cursor)
+            delete_range(a, previous_character(a->text, a->cursor), a->cursor);
         break;
     case XK_Delete:
-        if (a->cursor < a->length) delete_range(a, a->cursor,
-                                                next_character(a->text, a->length, a->cursor));
+        moving = false;
+        if (a->anchor != a->cursor) insert_text(a, NULL, 0);
+        else if (a->cursor < a->length)
+            delete_range(a, a->cursor,
+                         next_character(a->text, a->length, a->cursor));
         break;
-    case XK_Return: insert_text(a, "\n", 1); break;
-    case XK_Tab: insert_text(a, "    ", 4); break;
+    case XK_Return: moving = false; insert_text(a, "\n", 1); break;
+    case XK_Tab: moving = false; insert_text(a, "    ", 4); break;
     default:
+        moving = false;
         if (count > 0 && (unsigned char)input[0] >= 32 && !memchr(input, 0, (size_t)count))
             insert_text(a, input, (size_t)count);
         break;
+    }
+    if (moving) {
+        if (shift) own_selection(a, XA_PRIMARY, event->time);
+        else a->anchor = a->cursor;
     }
     ensure_cursor_visible(a);
 }
 
 static void click(struct app *a, XButtonEvent *event) {
+    if (a->mode == EDITOR && event->button == 2 && a->prompt == NO_PROMPT) {
+        if (event->y >= EDITOR_ROW_TOP && event->y < a->height - 43) {
+            editor_cursor_from_point(a, event->x, event->y);
+            a->anchor = a->cursor;
+        }
+        request_paste(a, XA_PRIMARY, event->time);
+        return;
+    }
     if (event->button == 4 || event->button == 5) {
         if (a->mode == FILES) {
             a->scroll += event->button == 5 ? 3 : -3;
@@ -1273,8 +1545,12 @@ static void click(struct app *a, XButtonEvent *event) {
         }
     }
     if (a->mode == EDITOR && a->prompt == NO_PROMPT &&
-        event->y >= EDITOR_ROW_TOP && event->y < a->height - 43)
+        a->pending_paste == None && event->y >= EDITOR_ROW_TOP &&
+        event->y < a->height - 43) {
         editor_cursor_from_point(a, event->x, event->y);
+        if (!(event->state & ShiftMask)) a->anchor = a->cursor;
+        a->selecting = true;
+    }
 }
 
 static bool setup(struct app *a) {
@@ -1293,8 +1569,14 @@ static bool setup(struct app *a) {
     XSetWMNormalHints(a->display, a->window, &size);
     XStoreName(a->display, a->window, a->mode == FILES ? "Heurism Files" : "Heurism Editor");
     XSelectInput(a->display, a->window, ExposureMask | ButtonPressMask |
+                 ButtonReleaseMask | Button1MotionMask | PropertyChangeMask |
                  KeyPressMask | StructureNotifyMask | FocusChangeMask);
     a->delete_window = XInternAtom(a->display, "WM_DELETE_WINDOW", False);
+    a->clipboard = XInternAtom(a->display, "CLIPBOARD", False);
+    a->utf8 = XInternAtom(a->display, "UTF8_STRING", False);
+    a->targets = XInternAtom(a->display, "TARGETS", False);
+    a->incr = XInternAtom(a->display, "INCR", False);
+    a->paste_property = XInternAtom(a->display, "HEURISM_EDITOR_PASTE", False);
     XSetWMProtocols(a->display, a->window, &a->delete_window, 1);
     a->gc = XCreateGC(a->display, a->window, 0, NULL);
     a->draw = XftDrawCreate(a->display, a->window, a->visual,
@@ -1315,7 +1597,7 @@ static bool setup(struct app *a) {
 
 int main(int argc, char **argv) {
     if (argc == 2 && !strcmp(argv[1], "--version")) {
-        puts("Heurism Files/Editor 0.4 (C/X11/Xft/GIO)"); return 0;
+        puts("Heurism Files/Editor 0.5 (C/X11/Xft/GIO)"); return 0;
     }
     setlocale(LC_CTYPE, "");
     struct app a = {.selected = -1, .draft_lock = -1};
@@ -1353,6 +1635,30 @@ int main(int argc, char **argv) {
                 render(&a);
             } else if (event.type == KeyPress) { keypress(&a, &event.xkey); render(&a); }
             else if (event.type == ButtonPress) { click(&a, &event.xbutton); render(&a); }
+            else if (event.type == MotionNotify && a.mode == EDITOR && a.selecting) {
+                editor_cursor_from_point(&a, event.xmotion.x, event.xmotion.y);
+                render(&a);
+            } else if (event.type == ButtonRelease && a.mode == EDITOR &&
+                       event.xbutton.button == Button1 && a.selecting) {
+                a.selecting = false;
+                editor_cursor_from_point(&a, event.xbutton.x, event.xbutton.y);
+                own_selection(&a, XA_PRIMARY, event.xbutton.time);
+                render(&a);
+            } else if (event.type == SelectionRequest)
+                selection_request(&a, &event.xselectionrequest);
+            else if (event.type == SelectionNotify &&
+                     event.xselection.selection == a.pending_paste) {
+                selection_notify(&a, &event.xselection);
+                render(&a);
+            } else if (event.type == PropertyNotify && a.paste_incr &&
+                       event.xproperty.atom == a.paste_property &&
+                       event.xproperty.state == PropertyNewValue) {
+                paste_property_notify(&a, &event.xproperty);
+                render(&a);
+            } else if (event.type == SelectionClear) {
+                if (event.xselectionclear.selection == XA_PRIMARY) a.owns_primary = false;
+                if (event.xselectionclear.selection == a.clipboard) a.owns_clipboard = false;
+            }
             else if (event.type == FocusIn && a.input_context) XSetICFocus(a.input_context);
             else if (event.type == FocusOut && a.input_context) XUnsetICFocus(a.input_context);
             else if (event.type == DestroyNotify &&
@@ -1364,6 +1670,10 @@ int main(int argc, char **argv) {
                      (Atom)event.xclient.data.l[0] == a.delete_window) running = false;
         }
         time_t now = time(NULL);
+        if (a.pending_paste != None && now > a.paste_deadline) {
+            cancel_paste(&a, "Paste timed out");
+            render(&a);
+        }
         if (a.mode == EDITOR && a.dirty && now - a.last_draft >= 2) {
             save_draft(&a);
             a.last_draft = now;
@@ -1387,6 +1697,9 @@ int main(int argc, char **argv) {
     if (window_alive) XDestroyWindow(a.display, a.window);
     XCloseDisplay(a.display);
     clear_undo(&a);
+    free(a.primary_text);
+    free(a.clipboard_text);
+    free(a.paste_text);
     free(a.text);
     return 0;
 }
