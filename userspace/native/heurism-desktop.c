@@ -37,7 +37,7 @@ enum action { NONE, SHOW_WORKSPACE, SHOW_MENU, SHOW_SPACES, SHOW_OVERVIEW, SHOW_
               LOCK_DESKTOP, LAUNCH_FILES, LAUNCH_EDITOR, LAUNCH_INSTALLED,
               OPEN_LOCAL,
               LAUNCH_BROWSER, LAUNCH_TERMINAL, LAUNCH_KEYBOARD, TOGGLE_THEME,
-              SWITCH_TASK, SWITCH_WORKSPACE, MOVE_WINDOW_WORKSPACE,
+              SWITCH_TASK, SWITCH_WORKSPACE, SELECT_SPACE, MOVE_WINDOW_WORKSPACE,
               TILE_TASK_LEFT, TILE_TASK_RIGHT,
               MINIMIZE_TASKS, ADMIN_CONSOLE, RESTART_VM, SHUT_DOWN_VM,
               BRIGHTER, DIMMER, TAP_TOGGLE, SCROLL_TOGGLE, SPEED_UP, SPEED_DOWN,
@@ -668,103 +668,150 @@ static void render_workspace(struct desktop *d) {
 static void render_spaces(struct desktop *d) {
     fill(d, d->background, 0, 0, d->width, d->height, 12, 22, 36);
     fill(d, d->background, 0, 0, d->width, 4, 75, 219, 194);
-    label(d, d->background, 36, 48, d->font_small, "H E U R I S M  /  WORKSPACE",
+    label(d, d->background, 36, 47, d->font_small, "H E U R I S M  /  SPACES",
           101, 220, 204);
-    label(d, d->background, 36, 103, d->font_large, "Spaces", 239, 245, 255);
-    label(d, d->background, 280, 102, d->font_body,
-          "Choose a space or open a window", 162, 183, 202);
-    int margin = 36, gap = 18, top = 145;
-    int card_width = (d->width - 2 * margin - gap) / 2;
-    int card_height = (d->height - top - 48 - gap) / 2;
+    label(d, d->background, 36, 99, d->font_large, "Spaces", 239, 245, 255);
+    label(d, d->background, 274, 98, d->font_body,
+          "Arrange the work in front of you", 162, 183, 202);
+    int tab_y = d->height - 108;
+    int main_height = tab_y - 156;
+    int focus_x = 36, focus_y = 138, focus_width = d->width - 425;
+    int list_x = focus_x + focus_width + 18, list_width = 335;
+    unsigned selected = d->spaces_selected < d->workspace_count ?
+                        d->spaces_selected : d->current_workspace;
+    rounded(d, d->background, focus_x, focus_y, focus_width, main_height, 12,
+            22, 37, 55);
+    rounded(d, d->background, list_x, focus_y, list_width, main_height, 12,
+            22, 37, 55);
+    char title[32], count_text[48];
+    snprintf(title, sizeof title, "Space %u", selected + 1);
+    label(d, d->background, focus_x + 24, focus_y + 38,
+          d->font_body, title, 241, 247, 250);
+    if (selected == d->current_workspace)
+        label(d, d->background, focus_x + 145, focus_y + 38,
+              d->font_small, "CURRENT", 101, 220, 204);
+    rounded(d, d->background, focus_x + focus_width - 158,
+            focus_y + 13, 134, 43, 7, 58, 112, 116);
+    label(d, d->background, focus_x + focus_width - 140, focus_y + 40,
+          d->font_small, "Open space", 239, 249, 248);
+    hit(d, d->background, focus_x + focus_width - 158,
+        focus_y + 13, 134, 43, SWITCH_WORKSPACE, (int)selected);
+    int map_x = focus_x + 22, map_y = focus_y + 68;
+    int map_width = focus_width - 44, map_height = main_height - 89;
+    rounded(d, d->background, map_x, map_y, map_width, map_height, 8,
+            11, 25, 42);
+    label(d, d->background, list_x + 20, focus_y + 37, d->font_small,
+          "WINDOWS IN THIS SPACE", 101, 220, 204);
+    int count = 0, listed = 0;
+    int row_limit = (main_height - 98) / 52;
+    for (int task = 0; task < d->task_count; task++) {
+        struct task *item = &d->tasks[task];
+        if (item->workspace != selected && item->workspace != UINT32_MAX) continue;
+        count++;
+        if (item->width > 0 && item->height > 0) {
+            int window_x = item->x < 0 ? 0 : item->x > d->screen_width ?
+                           d->screen_width : item->x;
+            int window_y = item->y < 0 ? 0 : item->y > d->screen_height ?
+                           d->screen_height : item->y;
+            int window_width = item->width > d->screen_width ?
+                               d->screen_width : item->width;
+            int window_height = item->height > d->screen_height ?
+                                d->screen_height : item->height;
+            int preview_x = map_x + window_x * map_width / d->screen_width;
+            int preview_y = map_y + window_y * map_height / d->screen_height;
+            int preview_width = window_width * map_width / d->screen_width;
+            int preview_height = window_height * map_height / d->screen_height;
+            if (preview_x < map_x + 2) preview_x = map_x + 2;
+            if (preview_y < map_y + 2) preview_y = map_y + 2;
+            if (preview_width < 28) preview_width = 28;
+            if (preview_height < 20) preview_height = 20;
+            if (preview_x + preview_width > map_x + map_width - 2)
+                preview_width = map_x + map_width - 2 - preview_x;
+            if (preview_y + preview_height > map_y + map_height - 2)
+                preview_height = map_y + map_height - 2 - preview_y;
+            rounded(d, d->background, preview_x, preview_y,
+                    preview_width, preview_height, 5, 66, 99, 120);
+            fill(d, d->background, preview_x + 3, preview_y + 3,
+                 preview_width - 6, 4, 101, 220, 204);
+            if (preview_width >= 95 && preview_height >= 38) {
+                XRectangle preview_clip = {(short)(preview_x + 8),
+                                           (short)(preview_y + 7),
+                                           (unsigned short)(preview_width - 16), 29};
+                XftDrawSetClipRectangles(d->background_draw, 0, 0,
+                                         &preview_clip, 1);
+                label(d, d->background, preview_x + 9, preview_y + 29,
+                      d->font_small, item->title, 239, 248, 250);
+                XftDrawSetClip(d->background_draw, NULL);
+            }
+            hit(d, d->background, preview_x, preview_y,
+                preview_width, preview_height, SWITCH_TASK, task);
+        }
+        if (listed < row_limit) {
+            int row_x = list_x + 14, row_y = focus_y + 64 + listed * 52;
+            int row_width = list_width - 28;
+            rounded(d, d->background, row_x, row_y, row_width, 46, 7,
+                    35, 56, 75);
+            XRectangle clip = {(short)(row_x + 11), (short)row_y,
+                               (unsigned short)(row_width - 112), 46};
+            XftDrawSetClipRectangles(d->background_draw, 0, 0, &clip, 1);
+            label(d, d->background, row_x + 11, row_y + 30,
+                  d->font_small, item->title, 233, 244, 249);
+            XftDrawSetClip(d->background_draw, NULL);
+            hit(d, d->background, row_x, row_y,
+                row_width - 100, 46, SWITCH_TASK, task);
+            int tile_x = row_x + row_width - 92;
+            rounded(d, d->background, tile_x, row_y + 1, 44, 44, 7,
+                    58, 90, 106);
+            rounded(d, d->background, tile_x + 48, row_y + 1, 44, 44, 7,
+                    58, 90, 106);
+            label(d, d->background, tile_x + 16, row_y + 30,
+                  d->font_body, "‹", 239, 248, 250);
+            label(d, d->background, tile_x + 64, row_y + 30,
+                  d->font_body, "›", 239, 248, 250);
+            hit(d, d->background, tile_x, row_y + 1, 44, 44,
+                TILE_TASK_LEFT, task);
+            hit(d, d->background, tile_x + 48, row_y + 1, 44, 44,
+                TILE_TASK_RIGHT, task);
+            listed++;
+        }
+    }
+    if (!count)
+        label(d, d->background, list_x + 24, focus_y + 100,
+              d->font_body, "A clear space for what comes next", 151, 178, 197);
+    else if (count > listed) {
+        snprintf(count_text, sizeof count_text, "+ %d more window%s",
+                 count - listed, count - listed == 1 ? "" : "s");
+        label(d, d->background, list_x + 20, focus_y + main_height - 20,
+              d->font_small, count_text, 151, 178, 197);
+    }
     unsigned visible = d->workspace_count < 4 ? d->workspace_count : 4;
+    int tab_width = (d->width - 72 - 36) / 4;
     for (unsigned space = 0; space < visible; space++) {
-        int x = margin + (int)(space % 2) * (card_width + gap);
-        int y = top + (int)(space / 2) * (card_height + gap);
-        bool active = space == d->current_workspace;
-        bool selected = space == d->spaces_selected;
-        rounded(d, d->background, x, y, card_width, card_height, 12,
-                selected ? 51 : 30, selected ? 75 : 46, selected ? 91 : 65);
-        if (active) fill(d, d->background, x + 16, y + 17, 4, 26, 75, 219, 194);
-        char heading[32], summary[40];
-        snprintf(heading, sizeof heading, "Space %u", space + 1);
-        label(d, d->background, x + 30, y + 38, d->font_body,
-              heading, 239, 245, 255);
-        int count = 0;
+        int tab_x = 36 + (int)space * (tab_width + 12);
+        int occupied = 0;
         for (int task = 0; task < d->task_count; task++)
             if (d->tasks[task].workspace == space ||
-                d->tasks[task].workspace == UINT32_MAX) count++;
-        snprintf(summary, sizeof summary, "%d window%s%s", count,
-                 count == 1 ? "" : "s", active ? "  ·  current" : "");
-        label(d, d->background, x + 30, y + 62, d->font_small,
-              summary, 169, 191, 208);
-        hit(d, d->background, x, y, card_width, card_height,
-            SWITCH_WORKSPACE, (int)space);
-        int map_x = x + 20, map_y = y + 82;
-        int map_width = (card_width - 54) * 55 / 100;
-        int map_height = card_height - 105;
-        rounded(d, d->background, map_x, map_y, map_width, map_height, 6,
-                14, 29, 48);
-        int listed = 0;
-        for (int task = 0; task < d->task_count; task++) {
-            struct task *item = &d->tasks[task];
-            if (item->workspace != space && item->workspace != UINT32_MAX) continue;
-            if (item->width > 0 && item->height > 0) {
-                int window_x = item->x < 0 ? 0 : item->x > d->screen_width ?
-                               d->screen_width : item->x;
-                int window_y = item->y < 0 ? 0 : item->y > d->screen_height ?
-                               d->screen_height : item->y;
-                int window_width = item->width > d->screen_width ?
-                                   d->screen_width : item->width;
-                int window_height = item->height > d->screen_height ?
-                                    d->screen_height : item->height;
-                int preview_x = map_x + window_x * map_width / d->screen_width;
-                int preview_y = map_y + window_y * map_height / d->screen_height;
-                int preview_width = window_width * map_width / d->screen_width;
-                int preview_height = window_height * map_height / d->screen_height;
-                if (preview_x < map_x + 2) preview_x = map_x + 2;
-                if (preview_y < map_y + 2) preview_y = map_y + 2;
-                if (preview_width < 28) preview_width = 28;
-                if (preview_height < 20) preview_height = 20;
-                if (preview_x + preview_width > map_x + map_width - 2)
-                    preview_width = map_x + map_width - 2 - preview_x;
-                if (preview_y + preview_height > map_y + map_height - 2)
-                    preview_height = map_y + map_height - 2 - preview_y;
-                rounded(d, d->background, preview_x, preview_y,
-                        preview_width, preview_height, 3, 68, 102, 123);
-                fill(d, d->background, preview_x + 3, preview_y + 3,
-                     preview_width - 6, 3, 112, 195, 190);
-            }
-            if (listed < 4) {
-                int list_x = map_x + map_width + 16;
-                int list_y = map_y + listed * 33;
-                int list_width = x + card_width - 18 - list_x;
-                rounded(d, d->background, list_x, list_y,
-                        list_width, 29, 5, 41, 62, 80);
-                label(d, d->background, list_x + 9, list_y + 20,
-                      d->font_small, item->title, 227, 239, 245);
-                hit(d, d->background, list_x, list_y,
-                    list_width - 62, 29, SWITCH_TASK, task);
-                int left_x = list_x + list_width - 59;
-                rounded(d, d->background, left_x, list_y + 2,
-                        27, 25, 4, 60, 88, 105);
-                rounded(d, d->background, left_x + 30, list_y + 2,
-                        27, 25, 4, 60, 88, 105);
-                label(d, d->background, left_x + 8, list_y + 19,
-                      d->font_small, "‹", 235, 246, 250);
-                label(d, d->background, left_x + 38, list_y + 19,
-                      d->font_small, "›", 235, 246, 250);
-                hit(d, d->background, left_x, list_y, 27, 29, TILE_TASK_LEFT, task);
-                hit(d, d->background, left_x + 30, list_y, 27, 29,
-                    TILE_TASK_RIGHT, task);
-                listed++;
-            }
-        }
-        if (!count)
-            label(d, d->background, map_x + map_width + 15, map_y + 23,
-                  d->font_small, "Ready for work", 140, 163, 182);
+                d->tasks[task].workspace == UINT32_MAX) occupied++;
+        rounded(d, d->background, tab_x, tab_y, tab_width, 68, 8,
+                space == selected ? 48 : 28,
+                space == selected ? 81 : 47,
+                space == selected ? 95 : 66);
+        if (space == selected) fill(d, d->background, tab_x, tab_y, tab_width, 4,
+                                    75, 219, 194);
+        snprintf(title, sizeof title, "Space %u", space + 1);
+        label(d, d->background, tab_x + 17, tab_y + 28,
+              d->font_body, title, 238, 246, 250);
+        snprintf(count_text, sizeof count_text, "%d window%s%s", occupied,
+                 occupied == 1 ? "" : "s",
+                 space == d->current_workspace ? "  ·  open" : "");
+        label(d, d->background, tab_x + 17, tab_y + 52,
+              d->font_small, count_text, 164, 191, 204);
+        hit(d, d->background, tab_x, tab_y, tab_width, 68,
+            SELECT_SPACE, (int)space);
     }
-    label(d, d->background, 36, d->height - 19, d->font_small,
-          "Click a title to focus   ·   ‹ › tile   ·   Esc closes", 145, 171, 190);
+    label(d, d->background, 36, d->height - 17, d->font_small,
+          "Select a space, then open it or choose a window   ·   Esc closes",
+          145, 171, 190);
 }
 
 static const char *bios_name(int index) {
@@ -1469,6 +1516,13 @@ static void open_panel(struct desktop *d, const char *selection_name, const char
 
 static void run_action(struct desktop *d, enum action action, int index) {
     if (d->spaces_mode) {
+        if (action == SELECT_SPACE) {
+            if (index >= 0 && (unsigned)index < d->workspace_count && index < 4) {
+                d->spaces_selected = (unsigned)index;
+                redraw(d);
+            }
+            return;
+        }
         if (action == SWITCH_WORKSPACE) switch_workspace(d, index);
         else if (action == SWITCH_TASK) activate_task(d, index);
         else if (action == TILE_TASK_LEFT || action == TILE_TASK_RIGHT) {

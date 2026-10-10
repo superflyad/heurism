@@ -24,7 +24,7 @@ are Heurism C programs. Xfwm4 still manages windows, Xfce's PAM screensaver
 locks the session, and Alpine Linux supplies the kernel and Unix services.
 The dock button and Super+Space open the same launcher from the VM workspace.
 It searches built-in actions, visible installed applications and current open
-windows; selecting a window returns focus to it. The 0.7 workspace has a
+windows; selecting a window returns focus to it. The 0.8 workspace has a
 persistent status panel, compact task dock and search palette instead of the
 old application and system dashboard. See
 [the modern workspace record](../../docs/heurism-modern-workspace.md).
@@ -50,7 +50,7 @@ separate from either user session. See [VM shell evidence](../../docs/heurism-sh
 and [Xfce recovery](../../docs/xfce-bridge.md).
 
 The active development VM release is selected by `/opt/heurism/native/current`
-and is `/opt/heurism/native/releases/heurism-os-20261010T160753Z-5683`.
+and is `/opt/heurism/native/releases/heurism-os-20261010T181435Z-31737`.
 See [the launcher evidence](../../docs/heurism-launcher.md).
 The separate fresh-image candidate uses `install-image-vm.sh` during image
 construction. It seals the compiled C binaries before first boot, installs
@@ -66,7 +66,7 @@ session can fall back to the sealed legacy UI if its own X startup fails. Root
 SSH and `companion-watch` run independently of the desktop. Do not deploy this
 VM installer on the Dell. The Dell has its own exact-DMI installer,
 `install-native-dell.sh`, and the active sealed release
-`/opt/heurism/native/releases/heurism-os-dell-20261010T161019Z-5092`. It
+`/opt/heurism/native/releases/heurism-os-dell-20261010T181420Z-8830`. It
 adds the window-first C workspace, launcher, quick controls and refined Heurism
 window theme to the earlier shell and clipboard terminal. This release was activated
 without an OS reboot. See [the Dell live-session record](../../docs/heurism-dell-live-session.md),

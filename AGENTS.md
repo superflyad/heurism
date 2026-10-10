@@ -1,5 +1,23 @@
 # Current product direction
 
+On 2026-10-10 Spaces changed from four dense cards to one selected workspace
+preview, a window list, and four space tabs. Its left/right placement controls
+now have 44-pixel targets; selecting a tab previews a space, while Open space,
+a window title, or a window diagram performs the requested switch/focus.
+The isolated VM and Dell-size tests passed, including cross-space activation,
+keyboard navigation and frame-aware tiling. The VM active release is
+`/opt/heurism/native/releases/heurism-os-20261010T181435Z-31737`; checked reboot
+returned fresh boot `df2dcd7d-7d25-4c98-9d2a-3221eaa0f804` with
+SSH/watch/control/UI and release verification healthy. Checkpoint
+`Heurism-focused-spaces-20261010` is
+`c11c98ff-a7a4-4ffc-95c5-88f5fa8ab191`. Dell guarded activation selected
+`/opt/heurism/native/releases/heurism-os-dell-20261010T181420Z-8830` on
+unchanged boot `edb102d9-25c6-409c-aa17-181fea3eaf41`; live services,
+eight protected hashes and default SSD orders passed. No Dell reboot or
+physical touch acceptance was performed. Build packages were removed. The
+window diagram is approximate, and lists with more than five or six windows
+need navigation. See `docs/heurism-modern-workspace.md`.
+
 On 2026-10-10 C Spaces gained left/right window placement. It asks Xfwm to
 move and resize the selected window within the EWMH work area, accounting for
 the window frame so a two-window pair fits between the panel and dock. The

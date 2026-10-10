@@ -333,3 +333,41 @@ interaction ideas while keeping actions transparent and user initiated:
 [Windows security](https://blogs.windows.com/windowsexperience/2026/10/07/building-windows-for-hybrid-intelligence/),
 [KDE](https://kde.org/gl/announcements/plasma/6/6.4.0/),
 [GNOME](https://release.gnome.org/50/).
+
+## Focused Spaces view, 2026-10-10
+
+The four equal workspace cards made open work hard to read and forced window
+actions into 27-pixel targets. Spaces now shows one selected workspace as a
+large position diagram, with a separate list of its windows and four compact
+space tabs. The 44-pixel left/right controls are easier to target. Selecting
+a tab changes the preview; Open space changes the actual workspace. A window
+title or diagram selects that window, including across spaces. The keyboard
+still uses number keys for direct switching, arrows to choose a tab, Enter to
+open it, and Escape to close the view. The map represents X11 window geometry
+and titles; it does not claim to show live window contents.
+
+The VM 1280×800 interaction test verified tab selection, cross-space window
+activation, keyboard switching and a Terminal/Editor tile pair. The final
+render is `build/prime-vm/spaces-focused.png`. The Dell isolated 1920×1080
+test exercised the same navigation and tiling on `:93`, leaving its live `:0`
+session untouched. Both release assembly gates passed the shell, control,
+apps and sealed-release checks. The VM guarded activation selected
+`/opt/heurism/native/releases/heurism-os-20261010T181435Z-31737` and a checked
+reboot returned boot `df2dcd7d-7d25-4c98-9d2a-3221eaa0f804` with healthy
+release/UI/SSH/watch/control. Checkpoint
+`Heurism-focused-spaces-20261010` has UUID
+`c11c98ff-a7a4-4ffc-95c5-88f5fa8ab191`.
+
+The Dell guarded installer activated
+`/opt/heurism/native/releases/heurism-os-dell-20261010T181420Z-8830` on the
+existing boot `edb102d9-25c6-409c-aa17-181fea3eaf41`. Live UID-1000
+desktop, SSH, watch, control, release verification, eight protected hashes,
+BootCurrent `0005`, BootOrder `0005,0000`, DriverOrder `0000,0001` and absent
+BootNext passed after removing temporary build packages. No Dell reboot or
+physical touch acceptance was performed.
+
+The focused view is a real usability improvement, but a space with more than
+five windows at 1280×800 or six at 1920×1080 currently shows an overflow
+count without a way to reach the rest in this view. That needs scrolling or
+search. The workspace diagram is still illustrative. Editor clipboard,
+Unicode search, shared app styling and accessibility remain major work.

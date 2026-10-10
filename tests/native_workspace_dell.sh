@@ -108,8 +108,11 @@ sleep 1
 spaces=$(xdotool search --name '^Heurism Spaces$' | tail -n 1)
 test -n "$spaces"
 xprop -id "$spaces" _NET_WM_STATE | grep -q '_NET_WM_STATE_SKIP_TASKBAR'
+xdotool mousemove --window "$spaces" 330 620 click 1
+sleep 1
+xprop -root _NET_CURRENT_DESKTOP | grep -q ' = 0$'
 xwd -root -silent -out /var/lib/companion/native-stage/evidence/heurism-dell-spaces.xwd
-xdotool mousemove --window "$spaces" 865 230 click 1
+xdotool mousemove --window "$spaces" 800 225 click 1
 sleep 1
 xprop -root _NET_CURRENT_DESKTOP | grep -q ' = 1$'
 test "$(xdotool getactivewindow)" = "$terminal"
@@ -127,7 +130,9 @@ xdotool key --clearmodifiers super+o
 sleep 1
 spaces=$(xdotool search --name '^Heurism Spaces$' | tail -n 1)
 test -n "$spaces"
-xdotool mousemove --window "$spaces" 1000 238 click 1
+xdotool mousemove --window "$spaces" 330 620 click 1
+sleep 1
+xdotool mousemove --window "$spaces" 980 225 click 1
 sleep 2
 geometry=$(xdotool getwindowgeometry --shell "$terminal")
 x=$(printf '%s\n' "$geometry" | sed -n 's/^X=//p')
