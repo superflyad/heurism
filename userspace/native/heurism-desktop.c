@@ -28,7 +28,7 @@
 
 enum page { WORKSPACE, MENU, OVERVIEW, SETTINGS, DEVICE, NETWORK, SOUND };
 enum action { NONE, SHOW_WORKSPACE, SHOW_MENU, SHOW_OVERVIEW, SHOW_SETTINGS,
-              SHOW_DEVICE, SHOW_NETWORK, SHOW_SOUND, LAUNCH_FILES, LAUNCH_EDITOR,
+              SHOW_DEVICE, SHOW_NETWORK, SHOW_SOUND, SHOW_POWER, LAUNCH_FILES, LAUNCH_EDITOR,
               LAUNCH_BROWSER, LAUNCH_TERMINAL, LAUNCH_KEYBOARD, TOGGLE_THEME,
               SWITCH_TASK, MINIMIZE_TASKS, ADMIN_CONSOLE, RESTART_VM, SHUT_DOWN_VM,
               BRIGHTER, DIMMER, TAP_TOGGLE, SCROLL_TOGGLE, SPEED_UP, SPEED_DOWN,
@@ -45,7 +45,8 @@ struct desktop {
     GC gc;
     XftDraw *background_draw, *dock_draw;
     XftFont *font_small, *font_body, *font_large;
-    Atom type_atom, desktop_atom, dock_atom, strut_atom, client_list_atom, active_atom;
+    Atom type_atom, desktop_atom, dock_atom, state_atom, skip_taskbar_atom;
+    Atom strut_atom, client_list_atom, active_atom;
     struct hit hits[MAX_HITS];
     int hit_count;
     struct task tasks[MAX_TASKS];
@@ -66,9 +67,25 @@ struct desktop {
     int published_page;
     bool settings_mode;
     bool power_mode;
+    bool launcher_mode;
+    char launcher_query[64];
+    int launcher_selected, launcher_offset;
     enum action pending_power;
     time_t power_deadline;
     const char *control_socket;
+};
+
+struct launcher_item { const char *name, *detail; enum action action; };
+static const struct launcher_item launcher_items[] = {
+    {"Files", "Browse and organize", LAUNCH_FILES},
+    {"Editor", "Write and revise", LAUNCH_EDITOR},
+    {"Browser", "Open the web", LAUNCH_BROWSER},
+    {"Terminal", "Run commands", LAUNCH_TERMINAL},
+    {"Settings", "Appearance and input", SHOW_SETTINGS},
+    {"System", "Machine and services", SHOW_OVERVIEW},
+    {"Network", "Connection status", SHOW_NETWORK},
+    {"Keyboard", "On-screen input", LAUNCH_KEYBOARD},
+    {"Power", "Restart or shut down", SHOW_POWER}
 };
 
 static unsigned long rgb(struct desktop *d, unsigned red, unsigned green, unsigned blue) {
@@ -276,6 +293,14 @@ static bool is_shell_window(struct desktop *d, Window window) {
             if (type == d->desktop_atom || type == d->dock_atom) skip = true;
         }
     if (property) XFree(property);
+    property = NULL;
+    if (!skip && XGetWindowProperty(d->display, window, d->state_atom, 0, 16,
+                                    False, XA_ATOM, &actual, &format, &count,
+                                    &remaining, &property) == Success &&
+        actual == XA_ATOM && format == 32)
+        for (unsigned long i = 0; i < count; i++)
+            if (((Atom *)property)[i] == d->skip_taskbar_atom) skip = true;
+    if (property) XFree(property);
     return skip;
 }
 
@@ -437,7 +462,73 @@ static int bios_value_count(struct desktop *d) {
     return count;
 }
 
+static bool launcher_match(struct desktop *d, const struct launcher_item *item) {
+    return !d->launcher_query[0] || strcasestr(item->name, d->launcher_query) ||
+           strcasestr(item->detail, d->launcher_query);
+}
+
+static int launcher_count(struct desktop *d) {
+    int count = 0;
+    for (size_t i = 0; i < sizeof launcher_items / sizeof launcher_items[0]; i++)
+        if (launcher_match(d, &launcher_items[i])) count++;
+    return count;
+}
+
+static enum action launcher_choice(struct desktop *d, int selected) {
+    for (size_t i = 0; i < sizeof launcher_items / sizeof launcher_items[0]; i++)
+        if (launcher_match(d, &launcher_items[i]) && selected-- == 0)
+            return launcher_items[i].action;
+    return NONE;
+}
+
+static void render_launcher(struct desktop *d) {
+    fill(d, d->background, 0, 0, d->width, d->height, 8, 20, 31);
+    fill(d, d->background, 0, 0, 5, d->height, 77, 211, 194);
+    fill(d, d->background, 32, 29, 38, 38, 77, 211, 194);
+    label(d, d->background, 44, 56, d->font_body, "H", 8, 32, 39);
+    label(d, d->background, 86, 52, d->font_small, "HEURISM  /  LAUNCHER", 77, 211, 194);
+    label(d, d->background, 32, 94, d->font_body, "Find your next step", 239, 245, 255);
+    fill(d, d->background, 32, 111, d->width - 64, 53, 19, 43, 56);
+    fill(d, d->background, 32, 111, 3, 53, 215, 168, 101);
+    char query[96];
+    snprintf(query, sizeof query, "%s%s", d->launcher_query[0] ? d->launcher_query :
+             "Search apps and system", d->launcher_query[0] ? " |" : "");
+    label(d, d->background, 49, 146, d->font_body, query,
+          d->launcher_query[0] ? 239 : 157, d->launcher_query[0] ? 245 : 176,
+          d->launcher_query[0] ? 255 : 198);
+    int count = launcher_count(d);
+    int capacity = (d->height - 226) / 54;
+    if (capacity < 1) capacity = 1;
+    if (d->launcher_selected >= count) d->launcher_selected = count ? count - 1 : 0;
+    if (d->launcher_selected < d->launcher_offset) d->launcher_offset = d->launcher_selected;
+    if (d->launcher_selected >= d->launcher_offset + capacity)
+        d->launcher_offset = d->launcher_selected - capacity + 1;
+    if (!count) label(d, d->background, 48, 218, d->font_body,
+                      "No matching actions", 157, 176, 198);
+    int index = 0;
+    for (size_t i = 0; i < sizeof launcher_items / sizeof launcher_items[0]; i++) {
+        const struct launcher_item *item = &launcher_items[i];
+        if (!launcher_match(d, item)) continue;
+        if (index >= d->launcher_offset && index < d->launcher_offset + capacity) {
+            int y = 181 + (index - d->launcher_offset) * 54;
+            bool selected = index == d->launcher_selected;
+            fill(d, d->background, 32, y, d->width - 64, 48,
+                 selected ? 29 : 16, selected ? 65 : 38, selected ? 72 : 51);
+            if (selected) fill(d, d->background, 32, y, 3, 48, 77, 211, 194);
+            label(d, d->background, 48, y + 22, d->font_body, item->name, 239, 245, 255);
+            label(d, d->background, d->width / 2, y + 21, d->font_small,
+                  item->detail, 157, 176, 198);
+            hit(d, d->background, 32, y, d->width - 64, 48, item->action, 0);
+        }
+        index++;
+    }
+    char footer[128];
+    snprintf(footer, sizeof footer, "%d results  ·  ↑↓ choose  ·  Enter open  ·  Esc close", count);
+    label(d, d->background, 32, d->height - 25, d->font_small, footer, 157, 176, 198);
+}
+
 static void render_page(struct desktop *d) {
+    if (d->launcher_mode) { render_launcher(d); return; }
     if (d->page == WORKSPACE && !d->settings_mode && !d->power_mode) {
         render_workspace(d);
         return;
@@ -679,7 +770,7 @@ static void publish_health(struct desktop *d) {
     json_object_put(record);
 }
 
-static void launch(struct desktop *d, const char *path) {
+static void launch(struct desktop *d, const char *path, const char *argument) {
     if (access(path, X_OK)) {
         snprintf(d->notice, sizeof d->notice, "Application is not installed yet"); return;
     }
@@ -687,7 +778,8 @@ static void launch(struct desktop *d, const char *path) {
     if (pid < 0) { snprintf(d->notice, sizeof d->notice, "Could not start application"); return; }
     if (!pid) {
         setsid();
-        execl(path, path, (char *)NULL);
+        if (argument) execl(path, path, argument, (char *)NULL);
+        else execl(path, path, (char *)NULL);
         _exit(127);
     }
     d->notice[0] = 0;
@@ -701,7 +793,18 @@ static void launch_native(struct desktop *d, const char *name) {
     char *slash = strrchr(path, '/');
     if (!slash || (size_t)(slash - path) + 1 + strlen(name) >= sizeof path) return;
     strcpy(slash + 1, name);
-    launch(d, path);
+    launch(d, path, NULL);
+}
+
+static void launch_self(struct desktop *d, const char *argument) {
+    char path[512];
+    ssize_t length = readlink("/proc/self/exe", path, sizeof path - 1);
+    if (length <= 0 || length >= (ssize_t)sizeof path - 1) {
+        snprintf(d->notice, sizeof d->notice, "Could not find Heurism desktop");
+        return;
+    }
+    path[length] = 0;
+    launch(d, path, argument);
 }
 
 static void activate_task(struct desktop *d, int index) {
@@ -719,6 +822,25 @@ static void activate_task(struct desktop *d, int index) {
 }
 
 static void run_action(struct desktop *d, enum action action, int index) {
+    if (d->launcher_mode) {
+        d->notice[0] = 0;
+        switch (action) {
+        case LAUNCH_FILES: launch_native(d, "heurism-files"); break;
+        case LAUNCH_EDITOR: launch_native(d, "heurism-editor"); break;
+        case LAUNCH_BROWSER: launch(d, "/usr/bin/firefox", NULL); break;
+        case LAUNCH_TERMINAL: launch_native(d, "heurism-terminal"); break;
+        case LAUNCH_KEYBOARD: launch(d, "/usr/bin/onboard", NULL); break;
+        case SHOW_SETTINGS: launch_self(d, "--settings"); break;
+        case SHOW_OVERVIEW: launch_self(d, "--overview"); break;
+        case SHOW_NETWORK: launch_self(d, "--network"); break;
+        case SHOW_POWER: launch_self(d, "--power"); break;
+        case SHOW_WORKSPACE: XCloseDisplay(d->display); exit(0);
+        default: return;
+        }
+        if (!d->notice[0]) { XCloseDisplay(d->display); exit(0); }
+        redraw(d);
+        return;
+    }
     if (action != RESTART_VM && action != SHUT_DOWN_VM) d->pending_power = NONE;
     enum page previous_page = d->page;
     switch (action) {
@@ -726,17 +848,30 @@ static void run_action(struct desktop *d, enum action action, int index) {
         if (d->settings_mode) { XCloseDisplay(d->display); exit(0); }
         d->page = WORKSPACE;
         break;
-    case SHOW_MENU: d->page = MENU; break;
+    case SHOW_MENU:
+        if (d->settings_mode) d->page = MENU;
+        else {
+            Atom selection = XInternAtom(d->display, "_HEURISM_LAUNCHER", False);
+            Window owner = XGetSelectionOwner(d->display, selection);
+            XWindowAttributes attributes;
+            if (owner && XGetWindowAttributes(d->display, owner, &attributes) &&
+                attributes.map_state == IsViewable) {
+                XRaiseWindow(d->display, owner);
+                XSetInputFocus(d->display, owner, RevertToPointerRoot, CurrentTime);
+            } else launch_self(d, "--launcher");
+        }
+        break;
     case SHOW_OVERVIEW: d->page = OVERVIEW; break;
     case SHOW_SETTINGS: d->page = SETTINGS; break;
     case SHOW_DEVICE: d->page = DEVICE; break;
     case SHOW_NETWORK: d->page = NETWORK; break;
     case SHOW_SOUND: if (d->dell) d->page = SOUND; break;
+    case SHOW_POWER: launch_self(d, "--power"); break;
     case LAUNCH_FILES: launch_native(d, "heurism-files"); break;
     case LAUNCH_EDITOR: launch_native(d, "heurism-editor"); break;
-    case LAUNCH_BROWSER: launch(d, "/usr/bin/firefox"); break;
+    case LAUNCH_BROWSER: launch(d, "/usr/bin/firefox", NULL); break;
     case LAUNCH_TERMINAL: launch_native(d, "heurism-terminal"); break;
-    case LAUNCH_KEYBOARD: launch(d, "/usr/bin/onboard"); break;
+    case LAUNCH_KEYBOARD: launch(d, "/usr/bin/onboard", NULL); break;
     case TOGGLE_THEME: {
         struct json_object *data = NULL;
         if (send_request(d, "theme", d->light ? "\"night\"" : "\"light\"", &data)) {
@@ -930,7 +1065,12 @@ static bool setup_x(struct desktop *d) {
     d->height = DisplayHeight(d->display, d->screen);
     int screen_width = d->width, screen_height = d->height;
     if (d->settings_mode) {
-        if (d->power_mode) {
+        if (d->launcher_mode) {
+            if (d->width > 700) d->width = 700;
+            if (d->height > 660) d->height = 660;
+            if (d->width > screen_width - 40) d->width = screen_width - 40;
+            if (d->height > screen_height - 40) d->height = screen_height - 40;
+        } else if (d->power_mode) {
             if (d->width > 620) d->width = 620;
             if (d->height > 380) d->height = 380;
         } else {
@@ -947,6 +1087,8 @@ static bool setup_x(struct desktop *d) {
     d->type_atom = XInternAtom(d->display, "_NET_WM_WINDOW_TYPE", False);
     d->desktop_atom = XInternAtom(d->display, "_NET_WM_WINDOW_TYPE_DESKTOP", False);
     d->dock_atom = XInternAtom(d->display, "_NET_WM_WINDOW_TYPE_DOCK", False);
+    d->state_atom = XInternAtom(d->display, "_NET_WM_STATE", False);
+    d->skip_taskbar_atom = XInternAtom(d->display, "_NET_WM_STATE_SKIP_TASKBAR", False);
     d->strut_atom = XInternAtom(d->display, "_NET_WM_STRUT", False);
     d->client_list_atom = XInternAtom(d->display, "_NET_CLIENT_LIST", False);
     d->active_atom = XInternAtom(d->display, "_NET_ACTIVE_WINDOW", False);
@@ -968,13 +1110,16 @@ static bool setup_x(struct desktop *d) {
     d->dock = XCreateSimpleWindow(d->display, root, d->dock_x, d->dock_y,
                                    (unsigned)d->dock_width, 68, 0, 0, 0);
     XStoreName(d->display, d->background,
+               d->launcher_mode ? "Heurism Launcher" :
                d->power_mode ? "Heurism Power" :
                d->settings_mode ? "Heurism Settings" : "Heurism desktop");
     XStoreName(d->display, d->dock, "Heurism dock");
     if (!d->settings_mode) {
         set_window_type(d, d->background, d->desktop_atom);
         set_window_type(d, d->dock, d->dock_atom);
-    }
+    } else if (d->launcher_mode)
+        XChangeProperty(d->display, d->background, d->state_atom, XA_ATOM, 32,
+                        PropModeReplace, (unsigned char *)&d->skip_taskbar_atom, 1);
     long strut[4] = {0, 0, 0, 84};
     if (!d->settings_mode)
         XChangeProperty(d->display, d->dock, d->strut_atom, XA_CARDINAL, 32,
@@ -993,6 +1138,13 @@ static bool setup_x(struct desktop *d) {
     XMapWindow(d->display, d->background);
     if (!d->settings_mode) XMapRaised(d->display, d->dock);
     XSync(d->display, False);
+    if (d->launcher_mode) {
+        Atom selection = XInternAtom(d->display, "_HEURISM_LAUNCHER", False);
+        XSetSelectionOwner(d->display, selection, d->background, CurrentTime);
+        XRaiseWindow(d->display, d->background);
+        XSetInputFocus(d->display, d->background, RevertToPointerRoot, CurrentTime);
+        XFlush(d->display);
+    }
     if (!d->settings_mode && !strcmp(DisplayString(d->display), ":0")) {
         XWarpPointer(d->display, None, root, 0, 0, 0, 0, 48, 48);
         XSync(d->display, False);
@@ -1041,7 +1193,7 @@ static int show_home(void) {
 int main(int argc, char **argv) {
     setlocale(LC_ALL, "");
     if (argc == 2 && !strcmp(argv[1], "--version")) {
-        puts("Heurism desktop 0.2 (C/X11/Xft)"); return 0;
+        puts("Heurism desktop 0.3 (C/X11/Xft)"); return 0;
     }
     if (argc == 2 && !strcmp(argv[1], "--home")) return show_home();
     struct desktop d = {.page = WORKSPACE, .control_socket = DEFAULT_SOCKET,
@@ -1049,12 +1201,22 @@ int main(int argc, char **argv) {
     if (argc == 2 && !strcmp(argv[1], "--settings")) {
         d.settings_mode = true;
         d.page = SETTINGS;
+    } else if (argc == 2 && !strcmp(argv[1], "--launcher")) {
+        d.settings_mode = true;
+        d.launcher_mode = true;
+        d.page = MENU;
+    } else if (argc == 2 && !strcmp(argv[1], "--overview")) {
+        d.settings_mode = true;
+        d.page = OVERVIEW;
+    } else if (argc == 2 && !strcmp(argv[1], "--network")) {
+        d.settings_mode = true;
+        d.page = NETWORK;
     } else if (argc == 2 && !strcmp(argv[1], "--power")) {
         d.settings_mode = true;
         d.power_mode = true;
         d.page = MENU;
     } else if (argc == 3 && !strcmp(argv[1], "--socket")) d.control_socket = argv[2];
-    else if (argc != 1) return fprintf(stderr, "usage: heurism-desktop [--settings|--power|--socket path]\n"), 2;
+    else if (argc != 1) return fprintf(stderr, "usage: heurism-desktop [--settings|--launcher|--overview|--network|--power|--socket path]\n"), 2;
     signal(SIGCHLD, SIG_IGN);
     if (!setup_x(&d)) return fprintf(stderr, "heurism-desktop: X display unavailable\n"), 1;
     refresh_status(&d);
@@ -1081,6 +1243,37 @@ int main(int argc, char **argv) {
                 }
             } else if (event.type == KeyPress) {
                 KeySym key = XLookupKeysym(&event.xkey, 0);
+                if (d.launcher_mode) {
+                    int count = launcher_count(&d);
+                    if (key == XK_Escape) run_action(&d, SHOW_WORKSPACE, 0);
+                    else if (key == XK_Down && d.launcher_selected + 1 < count)
+                        d.launcher_selected++;
+                    else if (key == XK_Up && d.launcher_selected > 0)
+                        d.launcher_selected--;
+                    else if ((key == XK_Return || key == XK_KP_Enter) && count)
+                        run_action(&d, launcher_choice(&d, d.launcher_selected), 0);
+                    else if (key == XK_BackSpace) {
+                        size_t length = strlen(d.launcher_query);
+                        if (length) d.launcher_query[length - 1] = 0;
+                        d.launcher_selected = d.launcher_offset = 0;
+                    } else if (key == XK_Delete) {
+                        d.launcher_query[0] = 0;
+                        d.launcher_selected = d.launcher_offset = 0;
+                    } else {
+                        char typed[16];
+                        KeySym converted;
+                        int length = XLookupString(&event.xkey, typed, sizeof typed, &converted, NULL);
+                        size_t used = strlen(d.launcher_query);
+                        if (length == 1 && typed[0] >= 32 && typed[0] < 127 &&
+                            used + 1 < sizeof d.launcher_query) {
+                            d.launcher_query[used] = typed[0];
+                            d.launcher_query[used + 1] = 0;
+                            d.launcher_selected = d.launcher_offset = 0;
+                        }
+                    }
+                    redraw(&d);
+                    continue;
+                }
                 if (d.page == NETWORK && d.password_focus) {
                     size_t length = strlen(d.wifi_password);
                     if (key == XK_Return || key == XK_KP_Enter) run_action(&d, WIFI_CONNECT, 0);
