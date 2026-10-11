@@ -24,7 +24,11 @@ def ssh(command, *, input_text=None):
             "-o", "StrictHostKeyChecking=yes", "-o", "HostKeyAlias=companion-dell",
             "-o", "UserKnownHostsFile=" + str(IDENTITY / "known_hosts"),
             "root@" + ADDRESS, command]
-    return subprocess.run(args, input=input_text, text=True, capture_output=True,
+    # Windows text-mode pipes translate LF to CRLF. chpasswd would then store
+    # the trailing CR as part of the password, diverging from the saved file.
+    payload = None if input_text is None else input_text.encode("ascii")
+    return subprocess.run(args, input=payload, text=input_text is None,
+                          capture_output=True,
                           timeout=20, check=True)
 
 

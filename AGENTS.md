@@ -1,5 +1,17 @@
 # Current product direction
 
+On 2026-10-11 the owner encountered the Dell lock dialog showing
+`companion-ui`; the saved desktop password was rejected. The Windows host
+provisioning tool had sent CRLF to BusyBox `chpasswd`, leaving a CR in the
+installed desktop and root passwords while the owner-only files held the
+intended values. Both accounts were reset over pinned root SSH with binary
+stdin to match their existing recovery files; hash comparisons passed.
+The desktop password then unlocked the actual PAM dialog, and the Xfce
+screensaver reported inactive. The provisioning tool and a byte-exact host
+regression test were updated. No Dell reboot or boot-path change occurred.
+See `docs/session-security-updates.md`. The account identifier remains a
+legacy compatibility name; preserve its UID and recovery role.
+
 On 2026-10-10 C Editor 0.5 gained range selection with Shift, pointer drag,
 Ctrl+A/C/X/V, PRIMARY middle-click paste, selection-aware editing and undo,
 and X11 CLIPBOARD interoperability including large INCR transfers. Isolated

@@ -1,5 +1,23 @@
 # Session security and whole-system updates — 2026-10-09
 
+## Dell credential repair — 2026-10-11
+
+The owner found the Dell lock screen would not accept the saved desktop
+credential. Windows text-mode stdin in `tools/provision-dell-password.py` had
+translated the LF supplied to `chpasswd` into CRLF. BusyBox `chpasswd`
+retained the CR in the password, while the owner-only recovery files held the
+intended 32-character values. Both the desktop and root account hashes were
+confirmed to differ from their saved values. The host tool now sends binary
+stdin, and `tests/provision_password_input.py` checks its exact bytes.
+
+Through pinned authenticated SSH, the Dell `companion-ui` and root passwords
+were reset to their existing owner-only recovery-file values with byte-exact
+input. Both hashes now match those files. The saved desktop credential was
+entered through the actual PAM dialog; `xfce4-screensaver-command --query`
+reported the screensaver inactive afterward. The active Heurism release and
+root SSH were healthy. The Dell was not rebooted. Do not put either recovery
+value in logs, command arguments or this document.
+
 ## Dell session
 
 The local root account previously had an empty password. The pinned SSH key
